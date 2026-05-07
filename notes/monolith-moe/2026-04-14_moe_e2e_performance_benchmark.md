@@ -94,7 +94,7 @@ Super Kernel (Overlap):
 
 - `csrc/fused_moe_super_kernel.hip` - Super Kernel 实现（v8a 配置，~791 TFLOPS GEMM）
 - `csrc/grouped_gemm.hip` - 高性能 Grouped GEMM 实现
-- `3rd/lab/notes/2026-04/2026-04-14_tile_overlap_analysis.md` - Tile Overlap 可行性分析
+- `3rd/lab/notes/monolith-moe/2026-04-14_tile_overlap_analysis.md` - Tile Overlap 可行性分析
 
 ## 下一步计划
 

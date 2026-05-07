@@ -1,176 +1,184 @@
-# Canvas walk-through script (EN)
+# NeMo vs Primus - Llama-2-70B LoRA SFT (simple talk track)
 
-> **Use with**: `nemo-vs-primus-llama2-70b-lora-trace.canvas.tsx`
->
-> **Audience**: dev/perf review meeting. ~5-7 min if you read straight through; ~3 min if you skip the optional sections marked `[skip-if-tight]`.
->
-> **How to use**: open the canvas next to the chat, scroll top → bottom. Each section header below maps to what's on screen. Read the quoted line as you point.
+> Short script for a meeting.  
+> Only two points: **speed gap** and **memory gap**.
 
 ---
 
-## §0 Title bar — pills at the top
+## 1) Speed gap: mostly DataLoader workers
 
-> "OK, this is the NeMo vs Primus comparison for **Llama-2-70B LoRA SFT** on **8 MI355X**. Both runs use the **same model**, **same parallelism — TP, PP, CP all 1, pure DP=8**, **same packed seq 8K**, **same global batch 8**. So this is a clean apples-to-apples test."
+I compared NeMo and Primus trace:
 
----
+the summary is:
 
-## §1 Green "Headline" callout
+> Compute kernels are mostly aligned.  
+> Right now, most of the performance gap is from the DataLoader pipeline.
+> the memory gap is  from config
 
-> "Top line: **NeMo step is 1490 ms, Primus is 1626 ms — NeMo wins by 8.4 %**."
->
-> "Almost the entire gap is the **191 ms DataLoader idle hole** at the start of every Primus step. NeMo eliminates it with 8 prefetching workers."
->
-> "NeMo also saves about **50 ms of RCCL** on the LoRA-A2A path, and pays **1.2 GB per step of HtoD memcpy** because it runs unfused TE ops — but that memcpy is fully overlapped behind compute, so it's free."
->
-> "Net result: **NeMo's compute stream is 99.5 % busy, Primus's is 84.9 %**. NeMo also already converges to target eval-acc in **10.79 minutes** wall-clock."
 
----
+Main result:
 
-## §2 Five Stat tiles (1626 / 1490 / 1.091× / 11.8 % / 0.5 %)
+> On the **same** hardware and the **same** workload, NeMo is **1490 ms** and Primus is **1626 ms** per step, so **NeMo is 8.4% faster**. NeMo's compute stream is 99.5% busy vs Primus' 84.9%
 
-> "These are the headline numbers. Primus 1626 ms, NeMo 1490 ms, speed-up 1.091×, **Primus idle 11.8 %, NeMo idle 0.5 %** — that 11-point idle delta is the whole story."
+Why:
+From the trace, the biggest reason is:
 
----
+> Primus has a **191 ms idle gap** at step start.  
+> This comes from single-process DataLoader work on CPU.  
+> NeMo uses **8 persistent prefetch workers**, so this idle gap is gone.
 
-## §3 NeMo end-to-end card (5 green tiles)
+What I did today:
 
-> "For reference: NeMo this run hits **eval-acc 0.9244** — above the 0.925 target — at **step 384**, 3072 samples, in **10.79 minutes** wall-clock at **5.40 samples per second**. Production step time per the MLLOG is 1502 ms, matches the 1490 ms ProfilerStep within 1 %."
->
-> "**Primus has not been run end-to-end yet** — today we only have a profiling run. So we cannot quote a Primus wall-clock to compare against this 10.79 min. That's action item A3."
+- I tried to fix this in Primus by enabling DataLoader workers.  
+- We hit a deadlock in the run, so we need more time to debug it.  
+- This needs code changes in the Primus Bridge data path, not just one YAML line.
 
 ---
 
-## §4 Per-stream timeline — Primus pipeline diagram
+## 2) Memory gap: mostly config + workflow differences
 
-> "Now the actual trace. **Primus pipeline first**."
->
-> "Notice the **gray idle block at the very start, taking up 12 % of the step** — that's **191 ms of GPU waiting** for the DataLoader. After that, compute fills the rest: FP8 GEMMs in blue, attention forward and backward in purple, with a small RCCL all-reduce tail at the end."
->
-> "Two streams visible: **stream 0 is compute, stream 33 is RCCL DDP**. The RCCL tail is 54 ms and only shows up at the end because everything else was overlapped during backward."
+The HBM gap is mostly from config differences.
 
----
+There are many config differences, and I did not test them one by one.  
+I'll share this file, and you can open it directly in Cursor.
+- I mainly tried a few DDP-related options that NeMo does not use.  
+- With those changes, Primus performance dropped by about 5%.  
+- So we need more time to validate this, mainly around fp8 + ddp + te parameters, especially `fp8_param` (likely high impact, but not tested yet).
 
-## §5 Per-stream timeline — NeMo pipeline diagram
-
-> "Now NeMo. Look — **no idle block at the start**. Compute is packed wall-to-wall."
->
-> "The **second lane on stream 3** is the memcpy lane — that orange band running from 0 to 80 % is the **1.2 GB HtoD prefetch**. It's running in parallel with compute on the same stream, using a separate hardware queue."
->
-> "Stream 45 is RCCL — just two tiny pulses, total 5 ms. That's because NeMo uses LoRA all-to-all instead of DDP reduce-scatter."
+Model · fp8_param (likely high impact, but I have not had time to test it yet)
 
 ---
 
-## §6 DataLoader configuration cards (the headline gap)
+## 3) Detailed version (for a longer meeting)
 
-> "Why is Primus's 191 ms idle hole there? **It's the DataLoader**."
->
-> "Primus runs `num_workers = 0` — single process, synchronous. Every step, the main thread reads the batch, calls `tril` on an 8K × 8K mask, then HtoD-copies it. The GPU just waits."
->
-> "NeMo runs **8 persistent workers with prefetch** — next batch is on GPU before the step starts."
->
-> "**We tried to enable workers on Primus today and it didn't go through.** Fork-after-CUDA deadlock — workers hang the moment they touch CUDA because the parent already initialized the CUDA context. Real fix needs `multiprocessing_context=spawn` plumbed into the Bridge dataset_provider, or worker-side CUDA init. Not a one-line YAML change."
->
-> "**`[skip-if-tight]`** Trade-off note: 8 workers × 8 ranks = 64 dataloader processes per node, costs ~6-8 GB host RAM."
+> Use this part if you need a 5-7 minute update.  
+> Same two topics: speed gap and memory gap, but with more detail.
 
----
+### 3.1 Scope and fairness
 
-## §7 GPU work decomposition table + bar chart `[skip-if-tight]`
+I compared NeMo and Primus with the same base setup:
 
-> "Per-kernel-category breakdown across all streams. A few rows worth pointing out:"
->
-> "**FP8 weight GEMM**: 773 ms Primus, 806 ms NeMo. Almost identical — this is the actual matmul compute, hipBLASLt autotuner picks the same kernels."
->
-> "**Attention** (CK V3 fwd+bwd): 315 vs 329 ms. Same kernel — `aiter::fmha_*_psskddv` — within step jitter."
->
-> "**FP8 cast/transpose standalone kernel**: **21 ms on Primus vs 1232 ms on NeMo**. Huge gap. This is the TE op-fuser difference — Primus fuses cast+transpose into the GEMM, NeMo runs it as a separate kernel."
->
-> "**Memcpy HtoD**: 4.5 vs 1199.8 ms. Same root cause — NeMo's FP8 transpose has to be staged from pinned host every step. Both rows are warning-colored because they look bad but are actually overlapped."
->
-> "**RCCL gradient sync**: 54 vs 5 ms. Two different communication paths, not NCCL tuning."
->
-> "The bar chart on the right shows the same thing as % of step. Notice NeMo's chart goes over 100 % — that's the stream oversubscription from memcpy + compute running in parallel."
+- same hardware: 8 x MI355X
+- same workload: Llama-2-70B LoRA SFT
+- same seq length: 8192 (packed)
+- same data parallel world size: DP=8
+- same main compute path (FP8 GEMM + CK V3 attention)
 
----
+So this is not a model-quality difference.  
+It is mostly a system/config/workflow difference.
 
-## §8 Top GPU kernels (two tables) `[skip-if-tight]`
+### 3.2 Speed gap: where the 8.4% comes from
 
-> "Top-10 kernels per side. Primus's top is FP8 GEMM. **NeMo's top two are Memcpy HtoD at 1195 ms and `transpose_optimized_kernel` at 1193 ms** — both warning-colored. From kernel #3 onward both lists look basically the same: same FP8 GEMMs, same `aiter::fmha`, same elementwise."
->
-> "**Same takeaway as before**: the scary memcpy / transpose pair is just NeMo running unfused TE ops. The **actual compute kernels are the same on both stacks**."
+Main number:
 
----
+> NeMo 1490 ms vs Primus 1626 ms, so NeMo is 8.4% faster per step.
 
-## §9 Stream occupancy + 4 stat tiles `[skip-if-tight]`
+From the trace, the biggest reason is:
 
-> "Stream-level numbers. Primus has 2 active streams because `GPU_MAX_HW_QUEUES=2` is set in its config. NeMo has 3, default."
->
-> "**Stream oversubscription on NeMo is 257 %** — that's how the 3830 ms of busy time fits into a 1490 ms step. It's HBM bandwidth + DMA running in parallel with compute."
->
-> "Compute-busy is **84.9 % Primus, 99.5 % NeMo** — and again, that 14-point gap is the DataLoader idle hole."
+> Primus has ~191 ms idle at the start of each step.
 
----
+Why this happens:
 
-## §10 Configuration deltas table — **this is the meaty section**
+- Primus baseline uses single-process DataLoader (`num_workers=0`)
+- CPU does sync mask work on the hot path
+- GPU waits for that CPU work before real compute starts
 
-> "OK, this is the most important table. **All 12 NVTE flags are identical between the two configs** — same CK V3 attention, same FP8 hybrid, same hipBLASLt. So I'm only listing the knobs that actually differ."
->
-> "**Top of the table — DataLoader rows**: Primus 0 workers, NeMo 8 persistent. That's the perf gap."
->
-> "**Middle — TE op-fuser rows**: Primus has `enable_primus_turbo` and `use_transformer_engine_op_fuser` on, NeMo doesn't. That fuses cast+transpose into the GEMM. This explains the 21 ms vs 1232 ms transpose kernel difference."
->
-> "**`[skip-if-tight]`** Cross-entropy and gradient-accumulation-fusion rows — Primus uses fused, NeMo unfused. Small effect."
->
-> "Now the rows I want to land on — these are the runtime overrides we found today by reading the `Overwrote` lines in `run.log.429`:"
->
-> "- **`grad_reduce_in_fp32 = True`** on Primus, False on NeMo. Twice the RCCL bandwidth."
->
-> "- **`fp8_param_gather = True`** on Primus, False on NeMo. Half the AG bandwidth."
->
-> "- **`fp8_param = True`** on Primus, False on NeMo. **This single flag explains 70 GB of HBM** — Primus stores FP8 weight + bf16 master = 3 B/param, NeMo stores bf16 only = 2 B/param. On 70B params that's 70 GB."
->
-> "- **All six DDP overlap and bucket-tuning knobs** — `overlap_grad_reduce`, `overlap_param_gather`, `overlap_param_gather_with_optimizer_step`, `average_in_collective`, `gradient_reduce_div_fusion`, `pad_buckets_for_high_nccl_busbw` — Primus all True, NeMo all False."
->
-> "**Methodology point**: none of this last group is visible in YAML. We only found them by reading `Overwrote` lines in the run log. **Don't trust YAML for FP8 / DDP analysis on Primus**."
+Why NeMo does not have this:
 
----
+- NeMo uses 8 persistent prefetch workers
+- next batch is prepared earlier
+- step starts with compute, almost no idle bubble
 
-## §11 Action items — four cards
+What I already tried:
 
-> "Four buckets:"
->
-> "**A1 — high impact, eliminate the 191 ms idle**: get DataLoader workers running with spawn context. Expected to drop step to ~1440 ms."
->
-> "**A2 — medium impact, FP8 amax history**: align with NeMo's 4 / most-recent. Saves a bit of HBM and helps scale-out later."
->
-> "**A3 — confirmed-good, keep TE op-fuser ON**: don't turn it off to chase NeMo. The 21 ms vs 1232 ms transpose gap proves it's strictly better. HBM gap should be solved by **DistOpt + activation memory audit**, not by disabling op-fuser."
->
-> "**A4 — low priority, RCCL channel tuning**: copy NeMo's `NCCL_MIN_CTAS=32` etc. for free win at scale-out. Keep `TORCH_NCCL_HIGH_PRIORITY=1` — that's a Primus advantage."
+- I enabled DataLoader workers on Primus
+- run hit deadlock (fork-after-CUDA type issue in this workflow)
+- so this is not done yet
 
----
+What is needed:
 
-## §12 Methodology callout
+- code-level fix in Primus Bridge data workflow
+- likely set and wire spawn context correctly
+- then rerun and validate stability + speed
 
-> "Both traces produced by torch.profiler with `record_shapes=False`, one active step per rank. Numbers extracted by `full_breakdown.py` on rank 4 NeMo / rank 2 Primus. RCCL kernels categorized via `SPLIT_NCCL_BY_CPU=1`."
+### 3.3 What is aligned at kernel level
 
----
+Important note for discussion:
 
-## Closing
+- the main compute kernels are already close/aligned
+- the speed gap is not because GEMM is much weaker
+- the biggest visible gap is the input pipeline idle
 
-> "To wrap up: **the 8 % step-time gap is DataLoader, fixable in code; the 85 GB HBM gap is config-driven, mostly `fp8_param=True`, also fixable but needs a code change in Primus's bridge precision recipe** — both stacks use different training workflows, so it's not a YAML-level A/B."
->
-> "Track 1 — fix DataLoader, run end-to-end, compare wall-clock. Track 2 — patch bridge precision recipe, A/B `fp8_param`, quantify HBM vs step-time trade-off."
->
-> "Both need code changes inside Primus. Questions?"
+So the current result is:
 
----
+> Core compute is mostly fine. Input pipeline is the bottleneck.
 
-## Speaker tips
+### 3.4 Memory gap: mostly config and workflow
 
-- **Don't read every row** of the kernel breakdown / top-kernels / configuration deltas — point at the highlighted (warning/danger toned) rows and skip the rest.
-- **Critical landings** (slow down, repeat numbers):
-  - "184 ms is GPU idle waiting for DataLoader" (§1, §4)
-  - "21 ms vs 1232 ms transpose" (§7, §10)
-  - "fp8_param=True explains 70 GB HBM" (§10, closing)
-  - "Don't trust YAML — read the `Overwrote` log" (§10)
-- **If audience asks "why didn't you fix DataLoader today?"**: pivot to §6 — fork-after-CUDA + return_cu_seqlen path both failed; needs Bridge dataset_provider patch.
-- **If audience asks "can we just turn off `fp8_param` to free HBM?"**: pivot to §11 A3 — yes in theory, no in YAML; needs patch to bridge `_apply_precision_overrides`.
+HBM gap is mainly config-driven.  
+But NeMo and Primus do not expose the same config surface.
+
+That means:
+
+- it is hard to do strict one-to-one config matching
+- many items need code-path changes, not just YAML edits
+
+Configs I called out first:
+
+- `overlap_grad_reduce`
+- `overlap_param_gather`
+- `overlap_param_gather_with_optimizer_step`
+- `average_in_collective`
+- `gradient_reduce_div_fusion`
+- `pad_buckets_for_high_nccl_busbw`
+
+Current status on these:
+
+- I tried a subset of DDP-style alignment changes
+- with those changes, Primus speed dropped ~5%
+- so this cannot be treated as “just make it same as NeMo”
+
+For memory, the higher-impact area is likely fp8-related runtime config, especially:
+
+- `fp8_param` (likely high impact for HBM)
+
+But:
+
+- I have not completed controlled A/B on this yet
+- this needs more engineering time and clean reruns
+
+### 3.5 Why this is taking time
+
+NeMo and Primus use different training workflows:
+
+- different runtime override points
+- different config-to-runtime mapping
+- some values are set inside code path, not visible in final YAML
+
+So verification path is:
+
+1. patch code path
+2. rerun stable job
+3. compare trace + step time + HBM
+4. keep only changes that help both perf and stability
+
+### 3.6 Next steps
+
+Speed track:
+
+- finish DataLoader worker fix in Primus workflow
+- rerun and confirm the 191 ms idle shrink
+
+Memory track:
+
+- test high-impact fp8/ddp/te configs one by one
+- include `fp8_param` A/B with clean measurement
+- avoid forcing full parity if it hurts Primus speed
+
+### 3.7 Detailed closing line (you can read this directly)
+
+> In this comparison, NeMo is 8.4% faster per step, and most of that comes from Primus DataLoader idle time, not from core compute kernels.  
+> I already tried to fix that path, but the run hit deadlock, so this needs more code-level work in the Primus workflow.  
+> For memory, the gap is mainly config and workflow driven.  
+> We should not force strict config parity, because that already showed a performance drop in Primus.  
+> Next, I will finish the DataLoader fix and run focused A/B on high-impact fp8/ddp/te configs, especially `fp8_param`, then report a clean trade-off between speed and HBM.

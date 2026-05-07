@@ -2,7 +2,7 @@
 name: archive-notes
 description: >-
   Archive analysis, research notes, and technical findings into the notes/
-  directory organized by date. Use when the user asks to save, archive,
+  directory organized by project. Use when the user asks to save, archive,
   record, or write up analysis results, or says "归档", "记录", "保存笔记",
   "写到 notes".
 ---
@@ -15,21 +15,37 @@ description: >-
 
 ```
 notes/
-└── YYYY-MM/
+├── README.md                    # 顶层入口：项目清单
+└── <project-slug>/
+    ├── README.md                # 项目总览：状态 / 时间线 / 下一步 / 文件索引
     └── YYYY-MM-DD_topic_slug.md
 ```
 
-- 按 **年-月** 分子目录：`notes/2026-04/`
+- 按 **项目** 分子目录（kebab-case slug），方便跟踪同一项目的进展，例如：
+  - `notes/monolith-moe/`     — MonolithMoE super-kernel + MoE comm-overlap
+  - `notes/gpt-oss/`          — GPT-OSS-20B MLPerf 调优系列
+  - `notes/mlperf-llama/`     — Llama2-70B LoRA (NeMo vs Primus) MLPerf
+  - `notes/weekly-reports/`   — 跨项目周报
 - 文件名格式：`YYYY-MM-DD_简短英文主题_slug.md`（下划线分隔，全小写）
-- 日期取**今天的日期**
+- 日期取**今天的日期**，前缀保留以便项目内按时间排序
+- **每个项目目录必须有 `README.md` 项目总览**（参考现有项目的 README）
+
+## 选择项目目录
+
+1. 如果当前对话明显延续某个已有项目（看 `notes/` 现有子目录），归档进去。
+2. 如果是全新项目，新建一个 kebab-case 项目目录，名字简短（≤ 3 个词）。
+3. 如果内容横跨多个项目（如周报、综述），放 `notes/weekly-reports/` 或新建一个明确的总览目录。
+4. 不确定时先列出现有 `notes/*/` 子目录，再决定。
 
 ## 归档流程
 
 1. **确定内容**：从当前对话中提取要归档的分析内容。如果对话中有多个独立主题，分别归档为不同文件。
-2. **生成文件名**：`YYYY-MM-DD_topic.md`，topic 用简短英文，下划线分隔，例如 `2026-04-14_moe_e2e_performance_benchmark.md`
-3. **创建目录**：确保 `notes/YYYY-MM/` 目录存在
-4. **写入内容**：按下方模板组织内容
-5. **确认**：告知用户文件路径
+2. **确定项目**：根据上面的规则选定项目目录（必要时新建）。
+3. **生成文件名**：`YYYY-MM-DD_topic.md`，topic 用简短英文，下划线分隔，例如 `2026-04-14_moe_e2e_performance_benchmark.md`。
+4. **创建目录**：确保 `notes/<project-slug>/` 目录存在；新项目时同时建 `README.md`（参考其他项目）。
+5. **写入内容**：按下方模板组织内容。
+6. **回写项目 README**（**必做**）：在 `notes/<project>/README.md` 的 **进展时间线** 加一行（日期 / 里程碑 / 关键数字 / 链接），并按需更新 **下一步** 和 **状态** 节。新项目时同时回写 `notes/README.md` 的"当前项目"清单。
+7. **确认**：告知用户文件路径 + 已更新的 README。
 
 ## 内容模板
 
@@ -74,4 +90,8 @@ notes/
 
 用户说："把今天的 MoE overlap 分析归档一下"
 
-→ 创建 `notes/2026-04/2026-04-14_moe_comm_overlap_analysis.md`，内容从对话中提取整理。
+→ 已有 `notes/monolith-moe/` 项目目录 → 创建 `notes/monolith-moe/2026-04-14_moe_comm_overlap_analysis.md`，内容从对话中提取整理 → 回写 `notes/monolith-moe/README.md` 时间线追加一行。
+
+用户说："这是一个新项目 attn-fp8 的初步调研，归档"
+
+→ 新建 `notes/attn-fp8/`，写 `notes/attn-fp8/README.md`（项目总览空架子）+ `notes/attn-fp8/YYYY-MM-DD_initial_survey.md` → 在 `notes/README.md` 的"当前项目"清单加一行。

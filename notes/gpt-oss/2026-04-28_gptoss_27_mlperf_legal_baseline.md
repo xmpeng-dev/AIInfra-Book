@@ -248,7 +248,7 @@ small_llm_moe_pretraining/primus/
 ├── run.log.20260427_28_legalopt_dup_killed_iter500    ← 重复 legal-OPT 起到 iter 500 即 kill
 └── run.sh                                             ← stock-legal launcher (修订过)
 
-slab/notes/2026-04/
+slab/notes/gpt-oss/
 ├── 2026-04-28_gptoss_27_mlperf_legal_baseline.md  ← 本 note
 ├── 2026-04-27_gptoss_25_overnight_rmsnorm_wave_timetotarget.md  ← 头部已加 superseded 横幅
 └── 2026-04-28_gptoss_26_lrdecay_default_regression.md  ← (TODO，本周整理)

@@ -150,4 +150,4 @@
 |------|------|
 | `benchmarks/bench_ck_overlap_real.py` | topk=8 真实通信 + CK overlap 测试 |
 | `benchmarks/bench_ck_stream_overlap.py` | stream-based overlap 测试 |
-| `3rd/lab/notes/2026-04/2026-04-14_tile_overlap_analysis.md` | 完整分析文档 |
+| `3rd/lab/notes/monolith-moe/2026-04-14_tile_overlap_analysis.md` | 完整分析文档 |

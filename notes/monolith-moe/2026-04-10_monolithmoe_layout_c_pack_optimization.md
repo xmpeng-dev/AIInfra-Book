@@ -19,7 +19,7 @@
 
 产出文件：
 - `csrc/fused_moe_super_kernel.hip` — 核心 kernel 代码
-- `3rd/lab/notes/2026-04/2026-04-14_data_layout_analysis.md` — 5 种 IPC buffer layout (A-E) 对比分析
+- `3rd/lab/notes/monolith-moe/2026-04-14_data_layout_analysis.md` — 5 种 IPC buffer layout (A-E) 对比分析
 - `docs/pack_phase_baseline_mi355x.txt` — Layout C baseline 性能数据
 - `docs/pack_phase_optimized_mi355x.txt` — 优化后性能数据 + 理论分析
 - `benchmarks/pack_phase_bench.py` — Pack phase micro-benchmark
