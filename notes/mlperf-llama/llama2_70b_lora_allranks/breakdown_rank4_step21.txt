@@ -1,0 +1,166 @@
+[info] parsing /results/torch_profiler_traces/allranks_rank4.pt.trace.json
+[info] window ProfilerStep#21: ts0=2457265757493  dur=1528.94 ms
+  scanned 1,000,000 (2.8s)
+  scanned 2,000,000 (5.2s)
+[info] events scanned=2,242,442  gpu_kern=4,992  c10d_intervals=7  (5.7s)
+[info] re-labelled 2 nccl_generic kernels via c10d cpu_op overlap
+[info] all profiler steps in trace:
+    ProfilerStep#20     dur=1530.98 ms
+    ProfilerStep#21     dur=1528.94 ms
+    ProfilerStep#22     dur=1529.06 ms
+    ProfilerStep#22     dur=1528.56 ms
+    ProfilerStep#21     dur=1528.62 ms
+    ProfilerStep#20     dur=1530.54 ms
+
+=== GPU per-stream busy time inside ProfilerStep#21 (1528.94 ms) ===
+  pid=   12 stream=   0   1430.17 ms   93.5%  n=  4990  ##############################################
+  pid=   12 stream=  33      1.92 ms    0.1%  n=     2  
+
+=== GPU kernel category breakdown (sum across streams = 1432.09 ms; step wall = 1528.94 ms; oversub = 93.7%) ===
+  other                 893.68 ms   62.4%   n=   1531
+  attn_kernel           330.03 ms   23.0%   n=    400
+  elementwise           123.87 ms    8.6%   n=   1183
+  gemm                   40.37 ms    2.8%   n=    961
+  norm                   20.01 ms    1.4%   n=    481
+  reduction               8.54 ms    0.6%   n=     84
+  fp8_cast                8.49 ms    0.6%   n=    165
+  memcpy                  4.90 ms    0.3%   n=    180
+  nccl_ag                 1.49 ms    0.1%   n=      1
+  nccl_generic            0.45 ms    0.0%   n=      2
+  optimizer               0.12 ms    0.0%   n=      2
+  softmax                 0.12 ms    0.0%   n=      1
+  nccl_ar                 0.02 ms    0.0%   n=      1
+
+=== Top-25 GPU kernel names by dur ===
+     363.57 ms  ( 23.8% of step)  Custom_Cijk_Alik_Bljk_F8B8BS_BH_SAB_NTD_UserArgs_shortname1_gfx950
+     294.51 ms  ( 19.3% of step)  Custom_Cijk_Alik_Bljk_F8BS_BH_SAB_NTD_UserArgs_shortname1_gfx950
+     222.65 ms  ( 14.6% of step)  aiter::fmha_bwd_hd128_bf16_causal_a16_psskddv
+     109.66 ms  (  7.2% of step)  Custom_Cijk_Alik_Bljk_F8BS_BH_SAB_NTD_UserArgs_shortname0_gfx950
+      95.13 ms  (  6.2% of step)  aiter::fmha_fwd_hd128_bf16_causal
+      42.27 ms  (  2.8% of step)  void at::native::vectorized_elementwise_kernel<8, at::native::CUDAFunctor_add<c10::BFloat16>, std::array<char*, 3ul> >(int, at::na
+      40.66 ms  (  2.7% of step)  Custom_Cijk_Alik_Bljk_F8B8BS_BH_SAB_NTD_UserArgs_shortname0_gfx950
+      34.46 ms  (  2.3% of step)  _ZN18transformer_engine16gated_act_kernelILi16ELb1EfNS_5EmptyETnPFT1_S2_RKT2_EXadL_ZNS_4siluIffEET_T0_RKS1_EE12hip_bfloat1615te_hi
+      32.38 ms  (  2.1% of step)  _ZN18transformer_engine17dgated_act_kernelILi16ELb1EfNS_5EmptyETnPFT1_S2_RKT2_EXadL_ZNS_4siluIffEET_T0_RKS1_EETnS7_XadL_ZNS_5dsilu
+      16.53 ms  (  1.1% of step)  _ZN18transformer_engine12unary_kernelILi16ELb1EfNS_5EmptyETnPFT1_S2_RKT2_EXadL_ZNS_6detail8identityEfRKS1_EE12hip_bfloat1615te_hip
+      16.34 ms  (  1.1% of step)  _ZN18transformer_engine12unary_kernelILi16ELb1EfNS_5EmptyETnPFT1_S2_RKT2_EXadL_ZNS_6detail8identityEfRKS1_EE12hip_bfloat1615te_hip
+      14.44 ms  (  0.9% of step)  void at::native::vectorized_elementwise_kernel<8, at::native::AUnaryFunctor<c10::BFloat16, c10::BFloat16, c10::BFloat16, at::nativ
+      12.75 ms  (  0.8% of step)  void at::native::(anonymous namespace)::fused_dropout_kernel_vec<c10::BFloat16, float, unsigned int, 1, 8, bool>(at::cuda::detail:
+      11.67 ms  (  0.8% of step)  void transformer_engine::fused_qkv_rope_backward_kernel<hip_bfloat16>(hip_bfloat16 const*, hip_bfloat16 const*, hip_bfloat16 const
+      11.53 ms  (  0.8% of step)  void transformer_engine::fused_qkv_rope_forward_kernel<hip_bfloat16>(hip_bfloat16 const*, float const*, float const*, int const*, 
+      11.11 ms  (  0.7% of step)  _rmsnorm_bwd_triton
+       8.52 ms  (  0.6% of step)  void ck_fused_attn::dk_dv_reduce<std::bfloat16_t>(unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, std::
+       8.36 ms  (  0.5% of step)  void at::native::vectorized_elementwise_kernel<8, at::native::(anonymous namespace)::masked_scale_kernel<bool, c10::BFloat16, floa
+       7.96 ms  (  0.5% of step)  _rmsnorm_fwd_triton_impl
+       7.89 ms  (  0.5% of step)  aiter::fmha_bwd_hd128_odo_bf16
+       7.54 ms  (  0.5% of step)  Cijk_Ailk_Bljk_BBS_BH_Bias_HA_S_SAV_UserArgs_MT256x128x32_MI32x32x1_SN_LDSB0_AFC1_AFEM1_AFEM1_ASEM1_CLR1_CADS0_DTLA0_DTLB0_DTVA0_D
+       6.84 ms  (  0.4% of step)  transpose_optimized_kernel(te_hip_fp8_e4m3 const*, float const*, te_hip_fp8_e4m3*, unsigned long, unsigned long)
+       5.82 ms  (  0.4% of step)  _cast_transpose_triton
+       5.03 ms  (  0.3% of step)  Cijk_Ailk_Bjlk_BSS_BH_Bias_S_HA_S_SAV_UserArgs_MT64x16x128_MI16x16x1_SN_LDSB1_AFC1_AFEM1_AFEM1_ASEM1_CLR0_CADS0_DTLA0_DTLB0_DTVA0_
+       4.79 ms  (  0.3% of step)  Memset (Device)
+
+=== Per-stream category breakdown (top 4 streams) ===
+  --- pid=12 stream=0 (busy=1430.17 ms) ---
+      other                893.68 ms
+      attn_kernel          330.03 ms
+      elementwise          123.87 ms
+      gemm                  40.37 ms
+      norm                  20.01 ms
+      reduction              8.54 ms
+      fp8_cast               8.49 ms
+      memcpy                 4.90 ms
+  --- pid=12 stream=33 (busy=1.92 ms) ---
+      nccl_ag                1.49 ms
+      nccl_generic           0.43 ms
+
+=== Compute / NCCL overlap (slot=50us) ===
+  compute-only              1433.60 ms
+  nccl-only                    2.00 ms
+  overlap(compute & nccl)      0.15 ms
+  idle                        93.25 ms
+  -> NCCL hidden behind compute: 7.0% (0.1/2.1 ms)
+  -> Compute kernels were busy 1433.75 ms (93.8% of step)
+
+=== Time-binned kernel mix (each bin = 19.1 ms) ===
+    bin   t(ms)    gemm  gGEMM   attn   norm  moeD   nccl  memcpy  elemw  other  total
+      0     0.0    0.00   0.00   0.00   0.00   0.00   0.00   0.00   0.02   0.00    0.02
+      1    19.1    0.00   0.00   0.00   0.00   0.00   0.00   0.00   0.00   0.00    0.00
+      2    38.2    0.00   0.00   0.00   0.00   0.00   0.00   0.00   0.00   0.00    0.00
+      3    57.3    0.00   0.00   0.00   0.00   0.00   0.00   0.00   0.00   0.00    0.00
+      4    76.4    0.15   0.00   1.17   0.10   0.00   1.49   0.03   0.35   3.60    6.90
+      5    95.6    0.40   0.00   2.98   0.26   0.00   0.00   0.00   2.16  13.32   19.11
+      6   114.7    0.37   0.00   2.83   0.25   0.00   0.00   0.00   1.78  13.87   19.11
+      7   133.8    0.38   0.00   2.39   0.25   0.00   0.00   0.00   2.27  13.82   19.11
+      8   152.9    0.37   0.00   3.58   0.25   0.00   0.00   0.00   1.75  13.16   19.11
+      9   172.0    0.30   0.00   2.39   0.25   0.00   0.00   0.00   2.12  14.06   19.11
+     10   191.1    0.45   0.00   3.59   0.25   0.00   0.00   0.00   1.90  12.92   19.11
+     11   210.2    0.30   0.00   2.39   0.20   0.00   0.00   0.00   2.10  14.13   19.11
+     12   229.3    0.45   0.00   3.59   0.29   0.00   0.00   0.00   1.94  12.84   19.11
+     13   248.5    0.30   0.00   2.38   0.20   0.00   0.00   0.00   2.03  14.20   19.11
+     14   267.6    0.38   0.00   3.59   0.24   0.00   0.00   0.00   1.81  13.09   19.11
+     15   286.7    0.37   0.00   2.39   0.25   0.00   0.00   0.00   1.75  14.35   19.11
+     16   305.8    0.39   0.00   2.78   0.25   0.00   0.00   0.00   2.26  13.44   19.11
+     17   324.9    0.37   0.00   3.18   0.25   0.00   0.00   0.00   1.79  13.52   19.11
+     18   344.0    0.30   0.00   2.40   0.24   0.00   0.00   0.00   2.14  14.03   19.11
+     19   363.1    0.45   0.00   3.58   0.25   0.00   0.00   0.00   1.94  12.88   19.11
+     20   382.2    0.30   0.00   2.41   0.20   0.00   0.00   0.00   2.03  14.17   19.11
+     21   401.3    0.38   0.00   3.61   0.24   0.00   0.00   0.00   1.84  13.03   19.11
+     22   420.5    0.37   0.00   2.41   0.25   0.00   0.00   0.00   2.09  14.00   19.11
+     23   439.6    0.38   0.00   3.09   0.25   0.00   0.00   0.00   1.97  13.43   19.11
+     24   458.7    0.37   0.00   2.89   0.25   0.00   0.00   0.00   1.76  13.85   19.11
+     25   477.8    0.39   0.00   2.39   0.25   0.00   0.00   0.00   2.25  13.84   19.11
+     26   496.9    0.38   0.00   3.59   0.25   0.00   0.00   0.00   1.77  13.13   19.11
+     27   516.0    0.30   0.00   2.39   0.24   0.00   0.00   0.00   2.13  14.05   19.11
+     28   535.1    0.45   0.00   3.58   0.25   0.00   0.00   0.00   1.89  12.94   19.11
+     29   554.2    0.30   0.00   2.38   0.20   0.00   0.00   0.00   2.07  14.16   19.11
+     30   573.4    0.38   0.00   3.57   0.25   0.00   0.00   0.00   1.82  13.10   19.11
+     31   592.5    0.38   0.00   2.38   0.25   0.00   0.00   0.00   1.93  14.17   19.11
+     32   611.6    0.38   0.00   3.03   0.24   0.00   0.00   0.00   2.12  13.33   19.11
+     33   630.7    0.37   0.00   2.94   0.25   0.00   0.00   0.00   1.79  13.76   19.11
+     34   649.8    0.34   0.00   2.39   0.24   0.00   0.00   0.00   2.13  14.01   19.11
+     35   668.9    0.41   0.00   3.61   0.25   0.00   0.00   0.00   1.92  12.92   19.11
+     36   688.0    0.30   0.00   2.40   0.20   0.00   0.00   0.00   2.07  14.15   19.11
+     37   707.1    3.45   0.00   1.19   0.22   0.00   0.00   0.02   1.33  11.46   17.67
+     38   726.2    0.61   0.00   5.91   0.30   0.00   0.00   0.12   1.14  10.97   19.06
+     39   745.4    0.62   0.00   5.93   0.30   0.00   0.00   0.12   1.41  10.67   19.06
+     40   764.5    0.62   0.00   5.94   0.23   0.00   0.00   0.12   1.33  10.82   19.06
+     41   783.6    0.45   0.00   5.90   0.30   0.00   0.00   0.12   1.43  10.87   19.07
+     42   802.7    0.63   0.00   5.17   0.30   0.00   0.00   0.12   1.47  11.38   19.06
+     43   821.8    0.62   0.00   4.96   0.30   0.00   0.00   0.12   1.48  11.58   19.06
+     44   840.9    0.63   0.00   5.04   0.30   0.00   0.00   0.12   1.48  11.50   19.06
+     45   860.0    0.62   0.00   5.57   0.30   0.00   0.00   0.06   1.43  11.07   19.06
+     46   879.1    0.48   0.00   5.94   0.23   0.00   0.00   0.12   1.38  10.92   19.07
+     47   898.3    0.63   0.00   5.87   0.30   0.00   0.00   0.12   1.48  10.67   19.06
+     48   917.4    0.62   0.00   5.86   0.31   0.00   0.00   0.12   1.48  10.66   19.06
+     49   936.5    0.63   0.00   5.81   0.30   0.00   0.00   0.12   1.07  11.13   19.05
+     50   955.6    0.62   0.00   5.84   0.30   0.00   0.00   0.12   1.50  10.68   19.05
+     51   974.7    0.62   0.00   5.80   0.23   0.00   0.00   0.12   1.35  10.94   19.06
+     52   993.8    0.45   0.00   5.61   0.30   0.00   0.00   0.12   1.42  11.16   19.07
+     53  1012.9    0.62   0.00   4.90   0.30   0.00   0.00   0.12   1.49  11.62   19.06
+     54  1032.0    0.63   0.00   4.94   0.30   0.00   0.00   0.12   1.46  11.60   19.06
+     55  1051.1    0.63   0.00   4.93   0.30   0.00   0.00   0.09   1.49  11.62   19.06
+     56  1070.3    0.48   0.00   5.89   0.23   0.00   0.00   0.09   1.30  11.08   19.07
+     57  1089.4    0.62   0.00   5.89   0.30   0.00   0.00   0.12   1.48  10.65   19.06
+     58  1108.5    0.62   0.00   5.89   0.30   0.00   0.00   0.12   1.47  10.65   19.06
+     59  1127.6    0.63   0.00   5.92   0.30   0.00   0.00   0.12   1.48  10.61   19.06
+     60  1146.7    0.63   0.00   5.86   0.30   0.00   0.00   0.12   1.08  11.06   19.06
+     61  1165.8    0.63   0.00   5.86   0.30   0.00   0.00   0.12   1.47  10.68   19.06
+     62  1184.9    0.62   0.00   5.88   0.22   0.00   0.00   0.12   1.36  10.85   19.06
+     63  1204.0    0.46   0.00   5.75   0.31   0.00   0.00   0.12   1.44  10.98   19.07
+     64  1223.2    0.62   0.00   4.95   0.31   0.00   0.00   0.12   1.48  11.57   19.06
+     65  1242.3    0.63   0.00   5.04   0.30   0.00   0.00   0.12   1.49  11.48   19.05
+     66  1261.4    0.63   0.00   4.98   0.30   0.00   0.00   0.12   1.48  11.55   19.05
+     67  1280.5    0.62   0.00   5.55   0.30   0.00   0.00   0.06   1.42  11.10   19.06
+     68  1299.6    0.49   0.00   5.86   0.23   0.00   0.00   0.12   1.39  10.99   19.07
+     69  1318.7    0.63   0.00   5.81   0.30   0.00   0.00   0.12   1.48  10.71   19.05
+     70  1337.8    0.63   0.00   5.91   0.30   0.00   0.00   0.12   1.48  10.62   19.05
+     71  1356.9    0.63   0.00   5.80   0.30   0.00   0.00   0.12   1.16  11.05   19.06
+     72  1376.0    0.62   0.00   5.85   0.31   0.00   0.00   0.12   1.39  10.77   19.06
+     73  1395.2    0.63   0.00   5.86   0.23   0.00   0.00   0.12   1.37  10.85   19.05
+     74  1414.3    0.46   0.00   5.87   0.31   0.00   0.00   0.12   1.43  10.90   19.07
+     75  1433.4    0.63   0.00   5.14   0.30   0.00   0.00   0.12   1.49  11.36   19.06
+     76  1452.5    0.62   0.00   5.02   0.30   0.00   0.00   0.12   1.47  11.54   19.06
+     77  1471.6    0.63   0.00   5.02   0.30   0.00   0.00   0.12   1.47  11.52   19.06
+     78  1490.7    0.62   0.00   5.25   0.31   0.00   0.00   0.06   1.42  11.39   19.05
+     79  1509.8    0.48   0.00   5.80   0.15   0.00   0.47   0.18   1.02   6.39   14.50
+
+[done] in 5.8s
