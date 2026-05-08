@@ -9,89 +9,95 @@ description: >-
 
 # Archive Notes
 
-将当前对话中的分析、调研、实验结果等内容归档到 `notes/` 目录。
+Archive analysis, research notes, experiment results, and technical findings from the current conversation into the `notes/` directory.
 
-## 目录结构
+## Directory Structure
 
 ```
 notes/
-├── README.md                    # 顶层入口：项目清单
+├── README.md                    # Top-level index: project list
 └── <project-slug>/
-    ├── README.md                # 项目总览：状态 / 时间线 / 下一步 / 文件索引
-    └── YYYY-MM-DD_topic_slug.md
+    ├── README.md                # Project overview: status / timeline / next steps / file index
+    └── YYYY-MM-DD_HHMM_topic_slug.md
 ```
 
-- 按 **项目** 分子目录（kebab-case slug），方便跟踪同一项目的进展，例如：
+- Organize notes by **project** using kebab-case slugs so progress for each project is easy to track. Examples:
   - `notes/monolith-moe/`     — MonolithMoE super-kernel + MoE comm-overlap
-  - `notes/gpt-oss/`          — GPT-OSS-20B MLPerf 调优系列
+  - `notes/gpt-oss/`          — GPT-OSS-20B MLPerf tuning series
   - `notes/mlperf-llama/`     — Llama2-70B LoRA (NeMo vs Primus) MLPerf
-  - `notes/weekly-reports/`   — 跨项目周报
-- 文件名格式：`YYYY-MM-DD_简短英文主题_slug.md`（下划线分隔，全小写）
-- 日期取**今天的日期**，前缀保留以便项目内按时间排序
-- **每个项目目录必须有 `README.md` 项目总览**（参考现有项目的 README）
+  - `notes/weekly-reports/`   — Cross-project weekly reports
+- File naming format: `YYYY-MM-DD_HHMM_short_english_topic_slug.md` using local time, 24-hour `HHMM`, underscores, and lowercase words.
+- Use **today's date and current minute** as the prefix so files sort chronologically within a project and are easy to review in sequence.
+- **Every project directory must have a `README.md` project overview**. Follow existing project README patterns.
 
-## 选择项目目录
+## Choose the Project Directory
 
-1. 如果当前对话明显延续某个已有项目（看 `notes/` 现有子目录），归档进去。
-2. 如果是全新项目，新建一个 kebab-case 项目目录，名字简短（≤ 3 个词）。
-3. 如果内容横跨多个项目（如周报、综述），放 `notes/weekly-reports/` 或新建一个明确的总览目录。
-4. 不确定时先列出现有 `notes/*/` 子目录，再决定。
+1. If the conversation clearly continues an existing project, archive the note under that existing `notes/<project>/` directory.
+2. If it is a new project, create a short kebab-case project directory name, preferably no more than three words.
+3. If the content spans multiple projects, such as a weekly report or broad strategy summary, place it under `notes/weekly-reports/` or create a clear overview project.
+4. When unsure, inspect the existing `notes/*/` directories first, then choose the best fit.
 
-## 归档流程
+## Archive Workflow
 
-1. **确定内容**：从当前对话中提取要归档的分析内容。如果对话中有多个独立主题，分别归档为不同文件。
-2. **确定项目**：根据上面的规则选定项目目录（必要时新建）。
-3. **生成文件名**：`YYYY-MM-DD_topic.md`，topic 用简短英文，下划线分隔，例如 `2026-04-14_moe_e2e_performance_benchmark.md`。
-4. **创建目录**：确保 `notes/<project-slug>/` 目录存在；新项目时同时建 `README.md`（参考其他项目）。
-5. **写入内容**：按下方模板组织内容。
-6. **回写项目 README**（**必做**）：在 `notes/<project>/README.md` 的 **进展时间线** 加一行（日期 / 里程碑 / 关键数字 / 链接），并按需更新 **下一步** 和 **状态** 节。新项目时同时回写 `notes/README.md` 的"当前项目"清单。
-7. **确认**：告知用户文件路径 + 已更新的 README。
+1. **Identify the content**: Extract the final analysis, research findings, or experiment results from the current conversation. If the conversation contains multiple independent topics, archive them as separate files.
+2. **Choose the project**: Select the project directory using the rules above. Create a new project directory when needed.
+3. **Generate the filename**: Use `YYYY-MM-DD_HHMM_topic.md`, where `HHMM` is the current local time to minute precision and `topic` is a short English slug separated by underscores, for example `2026-04-14_1530_moe_e2e_performance_benchmark.md`.
+4. **Create directories**: Ensure `notes/<project-slug>/` exists. For a new project, also create its `README.md` using existing project READMEs as examples.
+5. **Write the note**: Organize the note using the template below.
+6. **Update the project README** (**required**): Add one row to the **progress timeline** in `notes/<project>/README.md` with date, milestone, key numbers, and link. Update **next steps** and **status** when appropriate. For a new project, also update the "current projects" table in `notes/README.md`.
+7. **Confirm**: Tell the user the note path and which README files were updated.
 
-## 内容模板
+## Content Template
 
 ```markdown
-# 标题（中文）
+# Title in Chinese
 
-**日期**: YYYY-MM-DD
+**日期**: YYYY-MM-DD HH:MM
 
 ## 背景 / 目标
 
-简要说明分析的背景和目标。
+Briefly explain the background and goal of the analysis.
 
 ## 主要发现 / 结论
 
-核心结论，用表格或列表呈现关键数据。
+Summarize the core conclusions. Use tables or lists for key data.
 
 ## 详细分析
 
-分节展开，包含：
-- 实验配置（硬件、软件、参数）
-- 数据/表格/代码片段
-- 原因分析
+Expand by section. Include:
+- Experiment setup: hardware, software, parameters.
+- Data, tables, or code snippets.
+- Root-cause analysis.
 
 ## 下一步 / 建议
 
-（可选）后续行动建议。
+Optional follow-up actions or recommendations.
 
 ## 相关文件
 
-（可选）关联的代码、文档路径。
+Optional related code paths or document paths.
 ```
 
-## 内容规范
+## Content Guidelines
 
-- **语言**：正文用中文，代码/命令/技术术语保留英文原文
-- **数据优先**：尽量用表格呈现定量数据，避免纯文字描述性能数字
-- **精简**：去除对话中的试探、纠错、重复内容，只保留最终结论和关键推导
-- **可追溯**：保留实验命令、脚本路径、环境信息，方便日后复现
-- **自包含**：读者无需回溯对话即可理解全部内容
+- **Language**: Write the archived note body in Chinese. Keep code, commands, paths, and technical terms in their original English form.
+- **Data first**: Prefer tables for quantitative data. Avoid describing performance numbers only in prose.
+- **Concise**: Remove exploratory dialogue, corrections, and repetition. Keep only final conclusions and key reasoning.
+- **Traceable**: Preserve experiment commands, script paths, environment details, and relevant file paths so the work can be reproduced later.
+- **Self-contained**: The reader should not need to revisit the conversation to understand the note.
 
-## 示例
+## Examples
 
-用户说："把今天的 MoE overlap 分析归档一下"
+User request: "Archive today's MoE overlap analysis."
 
-→ 已有 `notes/monolith-moe/` 项目目录 → 创建 `notes/monolith-moe/2026-04-14_moe_comm_overlap_analysis.md`，内容从对话中提取整理 → 回写 `notes/monolith-moe/README.md` 时间线追加一行。
+→ Existing project directory: `notes/monolith-moe/`  
+→ Create `notes/monolith-moe/2026-04-14_1530_moe_comm_overlap_analysis.md`  
+→ Extract and condense the conversation into the note  
+→ Update the timeline in `notes/monolith-moe/README.md`
 
-用户说："这是一个新项目 attn-fp8 的初步调研，归档"
+User request: "This is the initial survey for a new attn-fp8 project. Archive it."
 
-→ 新建 `notes/attn-fp8/`，写 `notes/attn-fp8/README.md`（项目总览空架子）+ `notes/attn-fp8/YYYY-MM-DD_initial_survey.md` → 在 `notes/README.md` 的"当前项目"清单加一行。
+→ Create `notes/attn-fp8/`  
+→ Write `notes/attn-fp8/README.md` as the project overview  
+→ Write `notes/attn-fp8/YYYY-MM-DD_HHMM_initial_survey.md`  
+→ Add one row to the "current projects" table in `notes/README.md`
