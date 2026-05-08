@@ -38,6 +38,7 @@
 | 2026-04-25 | V2 fused residual+norm 800-iter A/B verdict | — | [24](./2026-04-25_gptoss_24_fused_residual_norm_v2_800iter_verdict.md) |
 | 2026-04-27 | RMSNorm 优化 wave 过夜 time-to-quality A/B | — | [25](./2026-04-27_gptoss_25_overnight_rmsnorm_wave_timetotarget.md) |
 | 2026-04-28 | MLPerf v6.0 合法 baseline 复测 + 修订 note 25 wave 收益 | — | [27](./2026-04-28_gptoss_27_mlperf_legal_baseline.md) |
+| 2026-05-07 | **B200 step #17 baseline 建立**（rank2+rank3 平均）+ note 16 头注硬件更正 | step **966.75 ms / 32 sample**; SendRecv 224 ms (23%) + RS 192 + AG 154 + GEMM 141; compute-busy 48.5%, NCCL hidden 24% | [28](./2026-05-07_gptoss_28_b200_baseline_step17.md) |
 
 ## 下一步（按 ROI）
 
@@ -49,6 +50,9 @@
 | ★★ | 修 regress：把 B1+B2（`ddp_average_in_collective` + `bucket_size=100M`）落回 baseline | [12](./2026-04-21_gptoss_12_comm_optimization_B_series.md), [14](./2026-04-23_gptoss_14_grad_sync_overlap_hsdp_negative.md) |
 | ★★ | 推荐 yaml diff 落到下次 submission run | [05](./2026-04-20_gptoss_05_borrow_from_deepseek_v3_config.md) |
 | ★ | Tier 4 — FMHA bwd 调优 (aiter::fmha_bwd tile / sliding-window) | [15](./2026-04-24_gptoss_15_ep1_trace_optimization_plan.md) |
+| ★★ | **B200 trace 重抓**（active step 1 个 / 自然退出，恢复 6 个 rank 缺失的 GPU 段）→ 多 rank 求平均 baseline 替换 §3 的 rk2+rk3 平均 | [28](./2026-05-07_gptoss_28_b200_baseline_step17.md) |
+| ★★ | **MoE expert 负载失衡定位**（rank2 vs rank3 GEMM 差 67 ms / SendRecv 差 120 ms） | [28](./2026-05-07_gptoss_28_b200_baseline_step17.md) |
+| ★★ | 写一份**严格 B200↔MI355X comparison note**（同 yaml + 同 patch + 多 rank 平均） | [28](./2026-05-07_gptoss_28_b200_baseline_step17.md) |
 | ⛔ | ~~继续追 DDP/HSDP/NCCL 旋钮~~（暴露 comm 仅 46 ms） | [14](./2026-04-23_gptoss_14_grad_sync_overlap_hsdp_negative.md), [15](./2026-04-24_gptoss_15_ep1_trace_optimization_plan.md) |
 
 ## 命名约定
