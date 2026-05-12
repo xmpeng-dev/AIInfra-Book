@@ -36,20 +36,20 @@
 | 2026-05-12 14:55 | **A1 per-expert pipelined compute 失败** | 把外层换成 `for e in epg` + per-expert 3 barrier；DSV3 SPARSE 7.95 → 21.6 ms (+172 %)，TILE-FIT 4.31 → 4.56 ms；并行度从 192-wide 摊到 ~30-wide + 96 vs 3 barrier；已 revert 到 P2 (`f50bb43`)；复盘 P1/A1 同款诊断陷阱 | [a1_pipelined_failed](./2026-05-12_1455_per_expert_pipelined_a1_failed_lost_flat_tile_parallelism.md) |
 | 2026-05-12 15:30 | **A2 M-concat tile dispatch 失败** | 物理 gather + per-expert (e, mi, ni) flat tile + 4 barrier；DSV3 SPARSE 7.95 → 9.03 ms (+13.6 %)，TILE-FIT 4.31 → 6.75 ms (+56.6 %)；tile 数从 8192 → 1024（DSV3）/ 512 → 128（TILE-FIT < 192 WGs）→ WG 利用率坍塌；L2 reuse 假设在 P2 时已经成立（隐式），A2 是浪费；已 revert；P1/A1/A2 三连同根：MI355X compute 是 parallelism-bound，不要再动 compute 排布 | [a2_concat_failed](./2026-05-12_1530_m_concat_a2_failed_parallelism_collapse.md) |
 | 2026-05-12 16:35 | **P0a 3-stage prefetch 失败 — workload 不是 HBM-latency-bound** | CK-style 3 LDS buffer + 提前 2 tile issue + 精确 `vmcnt(N)`；50/50 PASS、DSV3 / TILE-FIT 全 ratio 与 P2 在 ±1% 噪声内等价；hipcc `-Rpass-analysis` 显示 P2 已经 256 VGPR + 240 B/lane scratch + 1 wave/SIMD，3-stage 同资源；1-stage prefetch 已把 HBM 完全盖住，gap 不在这；patch 存档 `benchmarks/results/3stage_prefetch.patch`，已 revert；下一步先 profile MFMA pipeline 再决定 swizzle / waitcnt / pre-permute | [p0a_3stage_failed](./2026-05-12_1635_3stage_prefetch_p0a_failed_not_hbm_latency_bound.md) |
+| 2026-05-12 17:15 | **`mfma_gemm_tile_t` 内部 profile：LDS 端是真瓶颈** | `MOE_PROFILE` build 加 6 个 GEMM bucket（gemm_total / hbm_issue / wait_vm / lds_write / sync / mfma_inner），thread-0 `clock64` + 函数尾部一次 atomicAdd（release build 零开销，VGPR/AGPR/scratch 与 P2 完全一致）；DSV3 SPARSE + TILE-FIT 两 shape 同模式：**HBM wait 1 % / sync 1 % / hbm_issue 10 % / lds_write 33–34 % / mfma_inner 43–44 %**；ASM 揭示 lds_write 实际混合了 compiler 自带的隐式 prefetch（解释 P0a 失败）+ FC2 SwiGLU silu/rcp 计算；新 P0 排序：**LDS XOR swizzle 同时打 ds_write + ds_read（−5~10 % GEMM）**，再叠 **mxfp8 weights（−2~3 ms wall）** | [gemm_internal_profile](./2026-05-12_1715_mfma_gemm_tile_internal_profile_lds_write_44pct_mfma.md) |
 
 ## 下一步（按 ROI）
 
 | 优先级 | 方向 | 说明 |
 |---|---|---|
-| **P0** | **Profile `mfma_gemm_tile_t` 内部**（PROFILE_DECL or perf-counters） | A1/A2/P0a 三连失败的共同教训：**不 profile 直接动 GEMM 主循环 ≈ 50 % 失败率**；先确认 357T → 1050T 的 700T gap 是在 dependency stall 还是 LDS bank conflict 还是 syncthreads；估算 1d |
-| **P0** | **FP8 / mxfp8 weights for FC1 / FC2** | A2 失败后唯一剩下的 DSV3 大杠杆：HBM weight 流量直接 ÷2，与 layout 重排正交（不影响 tile 数 / WG 利用率）。MI355X 原生支持 mxfp8 MFMA。预期 DSV3 FC 5.86 → ~3 ms（−2.8 ms） |
+| **P0** | **LDS XOR swizzle 替 PAD=4**（一击两吃 ds_write + ds_read） | profile 数据落地（[gemm_internal_profile](./2026-05-12_1715_mfma_gemm_tile_internal_profile_lds_write_44pct_mfma.md)）：`lds_write` 占 33–34 %、`mfma_inner` 含 ds_read 占 43–44 %，合计 ≥ 75 % GEMM 时间走 LDS；XOR swizzle 同时减两段 bank conflict，预期 GEMM 减 5–10 % → wall DSV3 -0.3~-0.6 ms；估 2–3 d |
+| **P0** | **FP8 / mxfp8 weights for FC1 / FC2** | A2 失败后唯一剩下的 DSV3 大杠杆：HBM weight 流量直接 ÷2，与 layout 重排正交（不影响 tile 数 / WG 利用率），与 XOR swizzle 也正交。MI355X 原生支持 mxfp8 MFMA。预期 DSV3 FC 5.86 → ~3 ms（−2.8 ms） |
 | **P0** | **TILE-FIT scatter 总时间下降**（pack+scatter 合并 / per-rank XGMI link 并行 / skip empty pair early） | A1 / A2 证伪「让 wait/L2 reuse 帮忙」的路径；要省 wall 必须真正缩短 scatter 的物理时间，目标 TILE-FIT −1 ms |
-| P1 | K-step 间去掉 `lgkmcnt(0)` 隐式 barrier | 需要 NSTAGES ≥ 2 LDS buffer（已满足），CK 实测 +3–7 % |
-| P1 | LDS XOR swizzle 替 PAD=4 | +5–10 %（与 K-step barrier 联动）；详见 [ck_deep_dive](./2026-05-08_ck_implementation_deep_dive.md) |
-| P1 | C-shuffle epilogue | +3–5 %，FC2 影响小，可与 FP8 联动 |
 | P1 | Weight pre-permutation to MFMA fragment layout | 把 weight 离线重排成 MFMA fragment 序，去掉 LDS write + 减少 ds_read 仲裁；与 FP8 正交 |
+| P1 | C-shuffle epilogue | +3–5 %，FC2 影响小，可与 FP8 联动 |
 | P2 | Work-stealing tile counter（atomic 替代 round-robin） | 吸收 T_e 不均，−0.2~0.5 ms |
-| P2 | ~~3-stage prefetch~~ | 已证伪（[p0a_3stage_failed](./2026-05-12_1635_3stage_prefetch_p0a_failed_not_hbm_latency_bound.md)）：workload 不吃 HBM 延迟隐藏 |
+| P2 | ~~K-step 间去掉 `lgkmcnt(0)` 隐式 barrier~~ | profile 证伪：`sync_per_ktile` 占 1.1 %，没收益（[gemm_internal_profile](./2026-05-12_1715_mfma_gemm_tile_internal_profile_lds_write_44pct_mfma.md)） |
+| P2 | ~~3-stage prefetch~~ | 已证伪（[p0a_3stage_failed](./2026-05-12_1635_3stage_prefetch_p0a_failed_not_hbm_latency_bound.md)）：workload 不吃 HBM 延迟隐藏；GEMM profile 又复证 `wait_vm` 仅 1 % |
 | P3 | 重启 tail WG 并行化（compute 真比 tail 快之后） | 必须先把 atomic spin 换成 LDS-cached flag，否则像 P1 一样回退 |
 | P3 | 跨节点 ROCShmem + Persistent Kernel | IB 场景下 comm 更长，overlap 收益更大 |
 
@@ -61,7 +61,7 @@
 | Super-kernel + Layout | [`2026-04-10_monolithmoe_layout_c_pack_optimization.md`](./2026-04-10_monolithmoe_layout_c_pack_optimization.md), [`2026-04-14_data_layout_analysis.md`](./2026-04-14_data_layout_analysis.md) |
 | Overlap 调研 / 排障 | [`2026-04-09_tileflow_mi355x_tile_overlap_analysis.md`](./2026-04-09_tileflow_mi355x_tile_overlap_analysis.md), [`2026-04-13_moe_comm_overlap_analysis.md`](./2026-04-13_moe_comm_overlap_analysis.md), [`2026-04-14_rccl_overlap_analysis.md`](./2026-04-14_rccl_overlap_analysis.md) |
 | 可行性 + baseline | [`2026-04-14_tile_overlap_analysis.md`](./2026-04-14_tile_overlap_analysis.md), [`2026-04-14_moe_e2e_performance_benchmark.md`](./2026-04-14_moe_e2e_performance_benchmark.md) |
-| Super-kernel 调优 (E2E) | [`2026-05-12_1230_super_kernel_p0_full_arc_24_to_8p8ms.md`](./2026-05-12_1230_super_kernel_p0_full_arc_24_to_8p8ms.md), [`2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md`](./2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md), [`2026-05-12_1335_batched_compute_p2_single_phase.md`](./2026-05-12_1335_batched_compute_p2_single_phase.md), [`2026-05-12_1455_per_expert_pipelined_a1_failed_lost_flat_tile_parallelism.md`](./2026-05-12_1455_per_expert_pipelined_a1_failed_lost_flat_tile_parallelism.md), [`2026-05-12_1530_m_concat_a2_failed_parallelism_collapse.md`](./2026-05-12_1530_m_concat_a2_failed_parallelism_collapse.md), [`2026-05-12_1635_3stage_prefetch_p0a_failed_not_hbm_latency_bound.md`](./2026-05-12_1635_3stage_prefetch_p0a_failed_not_hbm_latency_bound.md) |
+| Super-kernel 调优 (E2E) | [`2026-05-12_1230_super_kernel_p0_full_arc_24_to_8p8ms.md`](./2026-05-12_1230_super_kernel_p0_full_arc_24_to_8p8ms.md), [`2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md`](./2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md), [`2026-05-12_1335_batched_compute_p2_single_phase.md`](./2026-05-12_1335_batched_compute_p2_single_phase.md), [`2026-05-12_1455_per_expert_pipelined_a1_failed_lost_flat_tile_parallelism.md`](./2026-05-12_1455_per_expert_pipelined_a1_failed_lost_flat_tile_parallelism.md), [`2026-05-12_1530_m_concat_a2_failed_parallelism_collapse.md`](./2026-05-12_1530_m_concat_a2_failed_parallelism_collapse.md), [`2026-05-12_1635_3stage_prefetch_p0a_failed_not_hbm_latency_bound.md`](./2026-05-12_1635_3stage_prefetch_p0a_failed_not_hbm_latency_bound.md), [`2026-05-12_1715_mfma_gemm_tile_internal_profile_lds_write_44pct_mfma.md`](./2026-05-12_1715_mfma_gemm_tile_internal_profile_lds_write_44pct_mfma.md) |
 
 > 周报视角：[`weekly-reports/2026-04-14_weekly_report_0409_0414.md`](../weekly-reports/2026-04-14_weekly_report_0409_0414.md)
 
