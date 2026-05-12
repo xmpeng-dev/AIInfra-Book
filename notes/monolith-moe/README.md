@@ -34,15 +34,16 @@
 | 2026-05-12 13:10 | **P1 tail-pipelining 失败 + critical-path 修正** | per-pair round-robin DSV3 8.80 → 9.98 ms regress；hybrid 持平；确认 wall = max(per-WG kernel_total) = compute，tail 不在临界路径 | [p1_tail_failed](./2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md) |
 | 2026-05-12 13:35 | **P2 Batched (e, src, mi, ni) compute + 单相 FC1/FC2** | 24 cross-WG barrier → 3；DSV3 **8.80 → 7.95 ms（1.07× vs PyTorch+RCCL，首次反超）**；TILE-FIT **5.07 → 4.31 ms（−15 %）**；L2 weight reuse 假设证伪，真实收益来自 barrier 合并 | [p2_batched_compute](./2026-05-12_1335_batched_compute_p2_single_phase.md) |
 | 2026-05-12 14:55 | **A1 per-expert pipelined compute 失败** | 把外层换成 `for e in epg` + per-expert 3 barrier；DSV3 SPARSE 7.95 → 21.6 ms (+172 %)，TILE-FIT 4.31 → 4.56 ms；并行度从 192-wide 摊到 ~30-wide + 96 vs 3 barrier；已 revert 到 P2 (`f50bb43`)；复盘 P1/A1 同款诊断陷阱 | [a1_pipelined_failed](./2026-05-12_1455_per_expert_pipelined_a1_failed_lost_flat_tile_parallelism.md) |
+| 2026-05-12 15:30 | **A2 M-concat tile dispatch 失败** | 物理 gather + per-expert (e, mi, ni) flat tile + 4 barrier；DSV3 SPARSE 7.95 → 9.03 ms (+13.6 %)，TILE-FIT 4.31 → 6.75 ms (+56.6 %)；tile 数从 8192 → 1024（DSV3）/ 512 → 128（TILE-FIT < 192 WGs）→ WG 利用率坍塌；L2 reuse 假设在 P2 时已经成立（隐式），A2 是浪费；已 revert；P1/A1/A2 三连同根：MI355X compute 是 parallelism-bound，不要再动 compute 排布 | [a2_concat_failed](./2026-05-12_1530_m_concat_a2_failed_parallelism_collapse.md) |
 
 ## 下一步（按 ROI）
 
 | 优先级 | 方向 | 说明 |
 |---|---|---|
-| **P0** | **A2: M-concat tile dispatch + true L2 reuse** | 保留 P2 flat tile，但把 8 路 source 在 dispatch 前逻辑拼接成 `M_concat = Σ_src T_e,src` 的大 M，一个 tile 同时跑多 source，weight cache 命中翻倍；需要 gather pre-pass 或 row-LUT。Risk 见 A1 复盘——不要再丢 flat 并行度。目标 DSV3 −0.5~1.0 ms |
-| **P0** | **DSV3 FC HBM 流量结构性减少**（FP8 weights / mxfp8 / weight pre-permute） | DSV3 7.95 ms 中 FC1+FC2 = 5.86 ms（73 %），基本贴 HBM 上限。FP8 半流量、mxfp8 是 MI355X 原生。目标 DSV3 −2~4 ms（≤ 4 ms） |
-| P1 | TILE-FIT scatter 总时间下降（pack+scatter 合并 / per-rank XGMI link 并行 / skip empty pair early） | A1 证伪「让 wait 等更短就能省 wall」的路径；要省 wall 必须真正缩短 scatter，而不是改 wait 触发条件 |
-| P1 | Comm-Compute Decoupling | compute WG 在 `wait_flag` spin 时主动 prefetch 下一对 weights / 参与 scatter slot filling。需要 LDS 共用方案 |
+| **P0** | **FP8 / mxfp8 weights for FC1 / FC2** | A2 失败后唯一剩下的 DSV3 大杠杆：HBM weight 流量直接 ÷2，与 layout 重排正交（不影响 tile 数 / WG 利用率）。MI355X 原生支持 mxfp8 MFMA。预期 DSV3 FC 5.86 → ~3 ms（−2.8 ms） |
+| **P0** | **TILE-FIT scatter 总时间下降**（pack+scatter 合并 / per-rank XGMI link 并行 / skip empty pair early） | A1 / A2 证伪「让 wait/L2 reuse 帮忙」的路径；要省 wall 必须真正缩短 scatter 的物理时间，目标 TILE-FIT −1 ms |
+| P1 | 3-stage prefetch + Stream-K + LDS XOR swizzle | GEMM 内核单点上限 530T → 860T；详见 [ck_deep_dive](./2026-05-08_ck_implementation_deep_dive.md)；与 compute 排布正交 |
+| P1 | C-shuffle epilogue | +3–5 %，FC2 影响小，可与 FP8 联动 |
 | P1 | 3-stage prefetch + Stream-K + LDS XOR swizzle | GEMM 内核单点上限 530T → 860T；DSV3 4.8 ms 目标的前置依赖；详见 [ck_deep_dive](./2026-05-08_ck_implementation_deep_dive.md) |
 | P2 | Work-stealing tile counter（atomic 替代 round-robin） | 吸收 T_e 不均，−0.2~0.5 ms |
 | P2 | C-shuffle epilogue | +3–5%，FC2 影响小 |
@@ -57,7 +58,7 @@
 | Super-kernel + Layout | [`2026-04-10_monolithmoe_layout_c_pack_optimization.md`](./2026-04-10_monolithmoe_layout_c_pack_optimization.md), [`2026-04-14_data_layout_analysis.md`](./2026-04-14_data_layout_analysis.md) |
 | Overlap 调研 / 排障 | [`2026-04-09_tileflow_mi355x_tile_overlap_analysis.md`](./2026-04-09_tileflow_mi355x_tile_overlap_analysis.md), [`2026-04-13_moe_comm_overlap_analysis.md`](./2026-04-13_moe_comm_overlap_analysis.md), [`2026-04-14_rccl_overlap_analysis.md`](./2026-04-14_rccl_overlap_analysis.md) |
 | 可行性 + baseline | [`2026-04-14_tile_overlap_analysis.md`](./2026-04-14_tile_overlap_analysis.md), [`2026-04-14_moe_e2e_performance_benchmark.md`](./2026-04-14_moe_e2e_performance_benchmark.md) |
-| Super-kernel 调优 (E2E) | [`2026-05-12_1230_super_kernel_p0_full_arc_24_to_8p8ms.md`](./2026-05-12_1230_super_kernel_p0_full_arc_24_to_8p8ms.md), [`2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md`](./2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md), [`2026-05-12_1335_batched_compute_p2_single_phase.md`](./2026-05-12_1335_batched_compute_p2_single_phase.md), [`2026-05-12_1455_per_expert_pipelined_a1_failed_lost_flat_tile_parallelism.md`](./2026-05-12_1455_per_expert_pipelined_a1_failed_lost_flat_tile_parallelism.md) |
+| Super-kernel 调优 (E2E) | [`2026-05-12_1230_super_kernel_p0_full_arc_24_to_8p8ms.md`](./2026-05-12_1230_super_kernel_p0_full_arc_24_to_8p8ms.md), [`2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md`](./2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md), [`2026-05-12_1335_batched_compute_p2_single_phase.md`](./2026-05-12_1335_batched_compute_p2_single_phase.md), [`2026-05-12_1455_per_expert_pipelined_a1_failed_lost_flat_tile_parallelism.md`](./2026-05-12_1455_per_expert_pipelined_a1_failed_lost_flat_tile_parallelism.md), [`2026-05-12_1530_m_concat_a2_failed_parallelism_collapse.md`](./2026-05-12_1530_m_concat_a2_failed_parallelism_collapse.md) |
 
 > 周报视角：[`weekly-reports/2026-04-14_weekly_report_0409_0414.md`](../weekly-reports/2026-04-14_weekly_report_0409_0414.md)
 
