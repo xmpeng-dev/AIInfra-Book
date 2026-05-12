@@ -9,14 +9,13 @@
 
 | 维度 | 值 |
 |---|---|
-| Hand-written Grouped GEMM (DSV3 grouped, MOe shape) | **GateUP 530T / Down 520T** vs CK 1050T / 960T （**0.50×** —— 阻塞 4.8ms 端到端目标）|
-| 上一代 micro-bench (M=128 单形状) | FC1 497T / FC2 498T （vs CK micro 376T，+32%）但**不代表 grouped 性能**|
+| **End-to-end super-kernel (DSV3 SPARSE, 8×MI355X)** | **7.95 ms / 363.1 TFLOPS / 1.07× vs PyTorch+RCCL 8.466 ms**（2026-05-12 P2 batched compute） |
+| End-to-end super-kernel (TILE-FIT) | **4.31 ms / 191.4 TFLOPS**（2026-05-12 P2） |
+| 调优脉络（DSV3 SPARSE wall） | 24.0 → 15.21 → 14.86 → 14.04 → **8.80**（P0 flat+small tile）→ **7.95**（P2 batched compute） |
+| Hand-written Grouped GEMM (DSV3 grouped) | GateUP 530T / Down 520T vs CK 1050T / 960T（**0.50×**，super-kernel 内嵌 MFMA 上限） |
 | Layout C 设计 | 5 种 IPC buffer layout 对比完成，Layout C 最优（XGMI ~95% 效率 + 无 gather） |
-| RCCL multi-stream 路 | ❌ 架构限制，否决 |
-| TileFlow rocSHMEM 移植 | ❌ device bitcode 与 gfx950 不兼容 |
-| HIP IPC + Triton system atomics | ❌ Triton gfx950 system-scope atomic codegen 不完整 |
-| 选定方向 | **HIP C++ IPC**，参考 DeepEP `atomicAdd_system + ld_volatile_global` |
-| 项目状态 | 阶段性收尾（2026-04-14 后切到 gpt-oss / mlperf-llama） |
+| 选定方向 | **HIP C++ IPC**（已实现），参考 DeepEP `atomicAdd_system + ld_volatile_global` |
+| 项目状态 | **重新激活中**（2026-05-12 起 P0/P1/P2 多轮优化已落地） |
 
 ## 进展时间线
 
@@ -31,17 +30,20 @@
 | 2026-04-14 | Tile-level overlap 数学可行性分析 | overlap 收益条件 + 临界点 | [tile_overlap](./2026-04-14_tile_overlap_analysis.md) |
 | 2026-04-14 | MoE E2E baseline + overlap 上限估算 | Small 1.29× / DSV3 推理 1.13× / DSV3 训练 1.08×（70% overlap 假设） | [moe_e2e](./2026-04-14_moe_e2e_performance_benchmark.md) |
 | 2026-05-08 | **CK Grouped GEMM 实现深度解析（vs v8a 530T）** | 拆解 6 项叠乘优化（Stream-K / 3-stage prefetch / LDS swizzle / 精确 waitcnt / C-shuffle / persistent counter），估算 530T → 860T 闭合路线 | [ck_deep_dive](./2026-05-08_ck_implementation_deep_dive.md) |
+| 2026-05-12 13:10 | **P1 tail-pipelining 失败 + critical-path 修正** | per-pair round-robin DSV3 8.80 → 9.98 ms regress；hybrid 持平；确认 wall = max(per-WG kernel_total) = compute，tail 不在临界路径 | [p1_tail_failed](./2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md) |
+| 2026-05-12 13:35 | **P2 Batched (e, src, mi, ni) compute + 单相 FC1/FC2** | 24 cross-WG barrier → 3；DSV3 **8.80 → 7.95 ms（1.07× vs PyTorch+RCCL，首次反超）**；TILE-FIT **5.07 → 4.31 ms（−15 %）**；L2 weight reuse 假设证伪，真实收益来自 barrier 合并 | [p2_batched_compute](./2026-05-12_1335_batched_compute_p2_single_phase.md) |
 
 ## 下一步（按 ROI）
 
 | 优先级 | 方向 | 说明 |
 |---|---|---|
-| P0 | **3-stage prefetch + Stream-K** | 单点最大 GEMM 收益（530T → 860T 估算），DSV3 4.8ms 目标的前置依赖；详见 [ck_deep_dive](./2026-05-08_ck_implementation_deep_dive.md) |
-| P0 | HIP C++ 实现 IPC 通信 kernel | 参考 DeepEP，`atomicAdd_system` 替代 RCCL/Triton（已有 `csrc/ipc_utils.cuh`，super-kernel 在用） |
-| P1 | LDS XOR swizzle 替换 PAD=4 + 拿掉 K-step barrier | 解锁 prefetch 深度，与 P0 联动 |
-| P1 | 自适应 M_TILE / 多版本派发 | DSV3 sparse 形状下 +20–40%，README Phase 2 TODO |
-| P2 | `rocprof` 实测 Pack OPT-1~8 | 验证理论 10× 加速 |
+| **P0** | **TILE-FIT `dispatch_src_ready_wait` 加速** | TILE-FIT 现在 50% wall（2.17 ms / 4.31 ms）花在等 8 个 src 的 scatter publish；候选：(a) comm WG 优先 publish src=0；(b) per-(rank, e) bump；(c) 全局 ready 合并。目标 −0.5~1.5 ms |
+| **P0** | **DSV3 FC HBM 流量结构性减少**（FP8 weights / mxfp8 / weight pre-permute） | DSV3 7.95 ms 中 FC1+FC2 = 5.86 ms（73 %），基本贴 HBM 上限。FP8 半流量、mxfp8 是 MI355X 原生。目标 DSV3 −2~4 ms（≤ 4 ms） |
+| P1 | (e, M_concat, ni) batched-by-M | 真正复用 weight，需 pre-scatter permute。目标 DSV3 −0.5~1.0 ms |
+| P1 | 3-stage prefetch + Stream-K + LDS XOR swizzle | GEMM 内核单点上限 530T → 860T；DSV3 4.8 ms 目标的前置依赖；详见 [ck_deep_dive](./2026-05-08_ck_implementation_deep_dive.md) |
+| P2 | Work-stealing tile counter（atomic 替代 round-robin） | 吸收 T_e 不均，−0.2~0.5 ms |
 | P2 | C-shuffle epilogue | +3–5%，FC2 影响小 |
+| P3 | 重启 tail WG 并行化（compute 真比 tail 快之后） | 必须先把 atomic spin 换成 LDS-cached flag，否则像 P1 一样回退 |
 | P3 | 跨节点 ROCShmem + Persistent Kernel | IB 场景下 comm 更长，overlap 收益更大 |
 
 ## 文件索引
@@ -52,9 +54,13 @@
 | Super-kernel + Layout | [`2026-04-10_monolithmoe_layout_c_pack_optimization.md`](./2026-04-10_monolithmoe_layout_c_pack_optimization.md), [`2026-04-14_data_layout_analysis.md`](./2026-04-14_data_layout_analysis.md) |
 | Overlap 调研 / 排障 | [`2026-04-09_tileflow_mi355x_tile_overlap_analysis.md`](./2026-04-09_tileflow_mi355x_tile_overlap_analysis.md), [`2026-04-13_moe_comm_overlap_analysis.md`](./2026-04-13_moe_comm_overlap_analysis.md), [`2026-04-14_rccl_overlap_analysis.md`](./2026-04-14_rccl_overlap_analysis.md) |
 | 可行性 + baseline | [`2026-04-14_tile_overlap_analysis.md`](./2026-04-14_tile_overlap_analysis.md), [`2026-04-14_moe_e2e_performance_benchmark.md`](./2026-04-14_moe_e2e_performance_benchmark.md) |
+| Super-kernel 调优 (E2E) | [`2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md`](./2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md), [`2026-05-12_1335_batched_compute_p2_single_phase.md`](./2026-05-12_1335_batched_compute_p2_single_phase.md) |
 
 > 周报视角：[`weekly-reports/2026-04-14_weekly_report_0409_0414.md`](../weekly-reports/2026-04-14_weekly_report_0409_0414.md)
 
 ## 维护约定
 
-每写一篇 note → 同时回写本 README 的 **进展时间线** 和 **下一步**。
+- **每一次优化都要写一篇 note**（即使是失败实验或临界路径修正），命名格式
+  `YYYY-MM-DD_HHMM_<topic_slug>.md`，遵循 `progress-note` skill 模板。
+- 每写一篇 note → 同时回写本 README 的 **进展时间线**、**状态** 和 **下一步**。
+- 老 note 不改（除非加 superseded 横幅），项目当前状态以本 README 为单一真源。
