@@ -30,6 +30,7 @@
 | 2026-04-14 | Tile-level overlap 数学可行性分析 | overlap 收益条件 + 临界点 | [tile_overlap](./2026-04-14_tile_overlap_analysis.md) |
 | 2026-04-14 | MoE E2E baseline + overlap 上限估算 | Small 1.29× / DSV3 推理 1.13× / DSV3 训练 1.08×（70% overlap 假设） | [moe_e2e](./2026-04-14_moe_e2e_performance_benchmark.md) |
 | 2026-05-08 | **CK Grouped GEMM 实现深度解析（vs v8a 530T）** | 拆解 6 项叠乘优化（Stream-K / 3-stage prefetch / LDS swizzle / 精确 waitcnt / C-shuffle / persistent counter），估算 530T → 860T 闭合路线 | [ck_deep_dive](./2026-05-08_ck_implementation_deep_dive.md) |
+| 2026-05-09 → 05-12 | **P0 全程：super-kernel 24.0 → 8.80 ms（项目里最大一跃）** | 四步串联：`wgs/CU=1 ratio=0.25` (24.0→15.21) → per-src wait_flag (→14.86) → per-src compute-barrier coalescing (→14.04) → **flat tile dispatch + adaptive small-tile (→8.80)**；compute_barrier_1 8.55 → 0.29 ms；FC1+FC2 11.19 → 6.11 ms (−45 %) | [p0_full_arc](./2026-05-12_1230_super_kernel_p0_full_arc_24_to_8p8ms.md) |
 | 2026-05-12 13:10 | **P1 tail-pipelining 失败 + critical-path 修正** | per-pair round-robin DSV3 8.80 → 9.98 ms regress；hybrid 持平；确认 wall = max(per-WG kernel_total) = compute，tail 不在临界路径 | [p1_tail_failed](./2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md) |
 | 2026-05-12 13:35 | **P2 Batched (e, src, mi, ni) compute + 单相 FC1/FC2** | 24 cross-WG barrier → 3；DSV3 **8.80 → 7.95 ms（1.07× vs PyTorch+RCCL，首次反超）**；TILE-FIT **5.07 → 4.31 ms（−15 %）**；L2 weight reuse 假设证伪，真实收益来自 barrier 合并 | [p2_batched_compute](./2026-05-12_1335_batched_compute_p2_single_phase.md) |
 
@@ -54,7 +55,7 @@
 | Super-kernel + Layout | [`2026-04-10_monolithmoe_layout_c_pack_optimization.md`](./2026-04-10_monolithmoe_layout_c_pack_optimization.md), [`2026-04-14_data_layout_analysis.md`](./2026-04-14_data_layout_analysis.md) |
 | Overlap 调研 / 排障 | [`2026-04-09_tileflow_mi355x_tile_overlap_analysis.md`](./2026-04-09_tileflow_mi355x_tile_overlap_analysis.md), [`2026-04-13_moe_comm_overlap_analysis.md`](./2026-04-13_moe_comm_overlap_analysis.md), [`2026-04-14_rccl_overlap_analysis.md`](./2026-04-14_rccl_overlap_analysis.md) |
 | 可行性 + baseline | [`2026-04-14_tile_overlap_analysis.md`](./2026-04-14_tile_overlap_analysis.md), [`2026-04-14_moe_e2e_performance_benchmark.md`](./2026-04-14_moe_e2e_performance_benchmark.md) |
-| Super-kernel 调优 (E2E) | [`2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md`](./2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md), [`2026-05-12_1335_batched_compute_p2_single_phase.md`](./2026-05-12_1335_batched_compute_p2_single_phase.md) |
+| Super-kernel 调优 (E2E) | [`2026-05-12_1230_super_kernel_p0_full_arc_24_to_8p8ms.md`](./2026-05-12_1230_super_kernel_p0_full_arc_24_to_8p8ms.md), [`2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md`](./2026-05-12_1310_tail_pipelining_p1_failed_critical_path_correction.md), [`2026-05-12_1335_batched_compute_p2_single_phase.md`](./2026-05-12_1335_batched_compute_p2_single_phase.md) |
 
 > 周报视角：[`weekly-reports/2026-04-14_weekly_report_0409_0414.md`](../weekly-reports/2026-04-14_weekly_report_0409_0414.md)
 
