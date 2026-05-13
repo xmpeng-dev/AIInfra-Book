@@ -10,6 +10,7 @@
 |---|---|---|
 | [`career-strategy/`](./career-strategy/README.md) | Agent 时代职业路线：Pilot 主线 + MMOE 硬核副线 | active — 长期职业资产规划 |
 | [`gpt-oss/`](./gpt-oss/README.md) | GPT-OSS-20B MLPerf 调优 (MI355X) | active — best 9963 s |
+| [`leann-paper/`](./leann-paper/README.md) | LEANN 低存储向量索引论文阅读 | archived — 深度报告完成 |
 | [`monolith-moe/`](./monolith-moe/README.md) | MoE super-kernel + CCO (MI355X) | 阶段性收尾 — HIP C++ IPC kernel 待落地 |
 | [`mlperf-llama/`](./mlperf-llama/README.md) | Llama-2-70B LoRA SFT, NeMo vs Primus | active — DataLoader fix + `fp8_param` A/B 待跑 |
 | [`pilot/`](./pilot/README.md) | Primus Pilot v2: agentic training-tuning system | active — bootstrap 工具落地，BASELINE 入口待排查 |
