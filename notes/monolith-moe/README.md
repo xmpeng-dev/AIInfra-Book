@@ -9,9 +9,9 @@
 
 | 维度 | 值 |
 |---|---|
-| **End-to-end super-kernel (DSV3 SPARSE, 8×MI355X)** | **6.59 ms / 437.7 TFLOPS / 1.28× vs PyTorch+RCCL 8.466 ms**（2026-05-13 8-GPU 实测，PAD=8 + K_TILE=128 落地后）—— 比 README 旧 headline 7.95 ms / 363T / 1.07× 缩短 1.36 ms / +21% TFLOPS |
-| End-to-end super-kernel (TILE-FIT) | **3.79 ms / 217 TFLOPS**（2026-05-13 8-GPU 实测，PAD=8 + K_TILE=128 落地后，旧 4.31 ms / 191T） |
-| 调优脉络（DSV3 SPARSE wall） | 24.0 → 15.21 → 14.86 → 14.04 → **8.80**（P0 flat+small tile）→ **7.95**（P2 batched compute）→ **6.59**（PAD=8 + K_TILE=128，2026-05-13 8-GPU 实测） |
+| **End-to-end super-kernel (DSV3 SPARSE, 8×MI355X)** | **6.27 ms / 460.4 TFLOPS / 1.35× vs PyTorch+RCCL 8.466 ms**（2026-05-13 Phase 2 DTOLDS 落地后 8-GPU 实测）—— 比 PAD=8 baseline 6.59 ms 再缩 5%，比 README 旧 headline 7.95 ms / 363T / 1.07× 累计缩短 1.68 ms / +27% TFLOPS |
+| End-to-end super-kernel (TILE-FIT) | **3.86 ms / 213 TFLOPS**（2026-05-13 Phase 2 DTOLDS 8-GPU 实测，PAD=8 baseline 3.79 ms / 217T 噪声内） |
+| 调优脉络（DSV3 SPARSE wall） | 24.0 → 15.21 → 14.86 → 14.04 → **8.80**（P0 flat+small tile）→ **7.95**（P2 batched compute）→ **6.59**（PAD=8 + K_TILE=128）→ **6.27**（Phase 1 PAD=0+XOR swizzle）→ **6.27**（Phase 2 DTOLDS for FC1 + FC2-B） |
 | Hand-written Grouped GEMM (DSV3 grouped, standalone) | **GateUP 643T / Down 559T vs CK 1050T / 960T（0.60× / 0.58×）** —— DirectToLds + K-aligned dispatch landed 2026-05-12 21:30 |
 | Layout C 设计 | 5 种 IPC buffer layout 对比完成，Layout C 最优（XGMI ~95% 效率 + 无 gather） |
 | 选定方向 | **HIP C++ IPC**（已实现），参考 DeepEP `atomicAdd_system + ld_volatile_global` |
@@ -41,14 +41,17 @@
 | 2026-05-13 01:30 | **K_TILE 64→128 标准化** | 8 K-step / tile → 4 K-step / tile，halve wait_vm；Grouped GEMM 212→199T@K=7168（同步轻微下降，因 wait_vm 不是 bottleneck）；super-kernel DSV3 421T@K=7168 单点 micro-bench 不动；进 commit `1e6dfe8` | — |
 | 2026-05-13 11:20 | **PAD8 + K_TILE128 真实 8-GPU 端到端实测** | 8× MI355X release-build wall：**DSV3 SPARSE 7.95→6.59 ms / 363→438T / 1.07×→1.28× vs RCCL**（−17 % wall）；TILE-FIT 4.31→3.79 ms / 191→217T；之前的 micro-bench 估计严重低估了 PAD=8+K_TILE=128 在端到端 wall 上的实际收益 | `benchmarks/results/dsv3_sparse_8gpu_e2e_2026-05-13.txt` |
 | 2026-05-12 21:30 | **DirectToLds + K-对齐 template dispatch 落地 grouped_gemm.hip（+204%）** | `buffer_load_dwordx4_lds` builtin 把 HBM→VGPR→LDS 三步压成一条 DMA 指令；trade-off：PAD=8 → 0、persistent OOB stale data → kKAlignedKT template + `__host__ __device__` 解 SFINAE。Grouped GEMM DSV3 GateUP **199 → 643 T（+222%）/ Down 213 → 558T（+162%）**，**vs CK 升到 0.60×**。**super-kernel 移植反退 12%**——经 PAD=0-only 隔离实验最终锁定真因：**PAD=0 触发 32-way bank conflict 把 ds_read latency 推到 ~100+ cyc，DSV3 SPARSE 走的 small tile 路径只有 1 MFMA / K-step (~32 cyc) hide 不住，mfma_inner 单独 588→2470 us（即使不动 DTOLDS）。DTOLDS 这一改动本身没问题（lds_write 单独看 −40%），被 PAD=0 prereq 绑架**。Density-bump 路径（M=N=256 K=64 PAD=8）也证伪：默认 tile GEMM −40% 但 DSV3 SPARSE wall −11%（small tile 不走默认 tile + K-tile 数 2×）。**P0 重新对齐到 LDS XOR swizzle**——唯一同时帮 small tile 和默认 tile 的招数，预期 DSV3 SPARSE 6.83→3.2 ms (−54%) | [dtolds_landed](./2026-05-12_2130_dtolds_landed_grouped_gemm_plus204pct_super_kernel_reverted.md) |
+| 2026-05-13 12:00 | **Phase 1：super-kernel PAD=0 + XOR swizzle 落地** | LDS_PAD 8→0（省 ~16 KB LDS），同时在 ds_write_b128 写端 (`ao/bo`) 和 lds_frag_ds<> 读端用 3-bit XOR `va ^ (ra & 7)` 对齐，stride 256 B / 2× bank period 下 32 lanes ds_read_b128 命中 8 个不同 bank quartet → 4 sub-cycles = conflict-free，与 PAD=8 基线持平。是 Phase 2 DTOLDS 的物理布局前置条件。DSV3 SPARSE 6.59→6.535 ms / 442T / 1.30× vs RCCL；correctness PASS | `benchmarks/results/dsv3_sparse_8gpu_phase1_xor_2026-05-13.txt` |
+| 2026-05-13 12:30 | **Phase 2：DTOLDS 替换 ds_write_b128（FC1 全 + FC2 B）** | `buffer_load_dwordx4_lds` 把 HBM→VGPR→LDS 压成一条 DMA。FC1 (`mfma_gemm_tile_t`) 全 DTOLDS，HBM gather 用 `va_load = va ^ (ra & 7)` 反 swizzle、ao/bo 回到 natural，两条 write 路径产生**完全相同**的 swizzled 物理布局。FC2 (`mfma_gemm_tile_swiglu_t`) B 用 DTOLDS、A 保留 legacy + swizzle（SwiGLU silu(gate)*up 需要 VGPR 中转）。OOB protection: voff=0x80000000 + per-tile `rb < valid_n` check（**bug fix**：之前用了 `n_offset + rb < valid_n` 在 n_offset>0 的 tile 全 OOB）。DSV3 SPARSE 6.535→**6.268 ms / 460T / 1.35× vs RCCL**；profile：lds_write 2054→1419 us (−635 us) / hbm_issue 702→1102 us (+400 us) / mfma_inner 631→589 us / gemm_total −302 us | `benchmarks/results/dsv3_sparse_8gpu_phase2_dtolds_2026-05-13.txt` |
 
 ## 下一步（按 ROI）
 
 | 优先级 | 方向 | 说明 |
 |---|---|---|
-| **P0** | **LDS XOR swizzle**（只配 legacy ds_write_b128 路径） | ⚠️ 硬件约束发现：DTOLDS 是 lane k→M0+k*16 强制线性 DMA，不能跟 XOR swizzle 非线性布局共存。所以 XOR 只能砍 `mfma_inner` 的 bank conflict（4-way→1-way → 588→~150 us），**不能同时砍 `lds_write` 52% 大头**。DSV3 SPARSE 预期 wall 6.83→~6.1 ms (−11%)。1-2 d |
-| P0+ | wave-block LDS layout（DTOLDS + 反 bank-conflict 二合一） | 重设计 LDS 物理布局让 DTOLDS 的线性写 + XOR-equivalent 反冲突共存。能砍 `lds_write` 52% + `mfma_inner` 14%。**理论上的 −54% 路径只能走这条**。复杂度高 | 3-5 d，先理论验证再实现 |
-| P1 | **per-tile-class K_TILE template**（default tile 用 M=N=256 K=64，small tile 保持 K=128） | Step 1 实验已验证默认 tile GEMM 内部 −40%；real win for TILE_FIT-like workloads。LDS region union + kK/kPad 模板参数；DSV3 SPARSE 不动；1-2 d，等 P0 落地后衡量 |
+| ~~**P0** XOR swizzle (legacy only)~~ | ~~只砍 mfma_inner bank conflict~~ | **2026-05-13 落地为 Phase 1**：实测 wall 6.59→6.535 ms (持平), 关键是 enabled Phase 2 的物理布局前置 |
+| ~~P0+ wave-block layout~~ | ~~DTOLDS + XOR-equivalent 同时存在~~ | **2026-05-13 落地为 Phase 2**：DTOLDS 线性写 + HBM gather 反 swizzle 等价于 XOR swizzle 的写端，物理布局完全一致。wall 6.59→6.268 ms (−5%) |
+| **P0** | **Phase 2.1：FC2 SwiGLU 路径 DTOLDS** | 当前 FC2 (`fc2_swiglu_tiles=2.6 ms / iter`) A 还在 legacy 因为 silu(gate)*up 要 VGPR 中转。两条候选路径：(a) pre-compute SwiGLU(FC1) 到 HBM scratch，FC2 像普通 weight 那样 DTOLDS 直接 load A；(b) LDS-side post-DTOLDS SwiGLU (复杂)。预期 wall 6.268→~5 ms (−20%) / 1.69× vs RCCL。2-3 d |
+| P1 | **per-tile-class K_TILE template**（default tile 用 M=N=256 K=64，small tile 保持 K=128） | Step 1 实验已验证默认 tile GEMM 内部 −40%；real win for TILE_FIT-like workloads。LDS region union + kK/kPad 模板参数；DSV3 SPARSE 不动；1-2 d |
 | **P0** | **FP8 / mxfp8 weights for FC1 / FC2** | A2 失败后唯一剩下的 DSV3 大杠杆：HBM weight 流量直接 ÷2，与 layout 重排正交（不影响 tile 数 / WG 利用率），与 XOR swizzle 也正交。MI355X 原生支持 mxfp8 MFMA。预期 DSV3 FC 5.86 → ~3 ms（−2.8 ms） |
 | **P0** | **TILE-FIT scatter 总时间下降**（pack+scatter 合并 / per-rank XGMI link 并行 / skip empty pair early） | A1 / A2 证伪「让 wait/L2 reuse 帮忙」的路径；要省 wall 必须真正缩短 scatter 的物理时间，目标 TILE-FIT −1 ms |
 | P1 | Weight pre-permutation to MFMA fragment layout | 把 weight 离线重排成 MFMA fragment 序，去掉 LDS write + 减少 ds_read 仲裁；与 FP8 正交 |
