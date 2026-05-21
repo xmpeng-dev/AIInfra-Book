@@ -29,6 +29,11 @@ Anchors: see `README.md` §"MFMA GEMM 内核" / §"计算-通信重叠" and
 `notes/P2_v1_fwd_progress.md` Milestone 3 for the current numbers
 (17.2 ms un-fused, ≤ 9 ms post-fuse target).
 
+Library context (read first if you have not):
+`knowledge/libraries/composable-kernel.md` — the CK tile abstraction
+and pipeline scheduling primitives this skill borrows from heavily;
+`knowledge/libraries/_patterns.md` for the broader pattern catalogue.
+
 ---
 
 ## Principle 1 — 每次 GEMM 算力打满，除非最后一次

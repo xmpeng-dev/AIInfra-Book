@@ -68,6 +68,8 @@ Three-tier mental model of what lives where:
 | Optimizing/tuning a training run | `.cursor/skills/pilot-*` (when added), `knowledge/pilot/` |
 | Analyzing a Kineto trace | `.cursor/skills/gpu-trace-analysis` or `.cursor/skills/trace-vram-canvas` |
 | Comparing backends (TorchTitan/Megatron/Primus) | `.cursor/skills/backend-gap-report`, `knowledge/systems/` |
+| Picking / wrapping a 3rd-party kernel library (CK, AITER, hipBLASLt, primus-turbo, …) | `knowledge/libraries/README.md` first, then `knowledge/libraries/<lib>.md`; `_patterns.md` for cross-library trade-offs |
+| Distilling a new external library into knowledge | `.cursor/skills/distill-operator-repo/SKILL.md` → outputs `knowledge/libraries/<slug>.md` |
 
 ## 5. Hard conventions (do not violate)
 

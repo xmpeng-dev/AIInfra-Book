@@ -7,6 +7,8 @@ globs:
   - "**/*kernel*.py"
   - "knowledge/kernels/**"
   - "knowledge/hardware/**"
+  - "knowledge/libraries/**"
+  - "3rd/**"
 alwaysApply: false
 ---
 
@@ -14,8 +16,9 @@ alwaysApply: false
 
 This repo discusses kernel work — it does not host kernel sources of
 its own. When editing or reasoning about kernel files (anywhere) or
-the corresponding documentation under `knowledge/kernels/` and
-`knowledge/hardware/`, follow these rules.
+the corresponding documentation under `knowledge/kernels/`,
+`knowledge/hardware/`, `knowledge/libraries/`, or while reading
+upstream library sources under `3rd/`, follow these rules.
 
 ## Hardware-first thinking
 
@@ -23,8 +26,27 @@ the corresponding documentation under `knowledge/kernels/` and
   MI325X / CDNA3)** vs **gfx950 (MI355X / CDNA4)** vs **NVIDIA H100 /
   B200**. Layouts, MFMA instructions, LDS sizes, and async-copy
   behavior differ.
-- Reference `knowledge/hardware/<arch>.md` for register / LDS / cache
-  numbers — do not paste fresh numbers without a source.
+- For chip-level numbers (HBM / bandwidth / board TFLOPs / dtype peaks),
+  cite `knowledge/hardware/gpu-comparison.md`. For micro-architecture
+  detail (XCD / NPS / MFMA family / VGPR-AGPR / LDS / async direct-to-LDS
+  / Triton-on-AMD knobs), invoke `.cursor/skills/mi355_hardware_aware/`
+  for MI355X. Do not paste fresh numbers without a source.
+
+## Library / backend selection
+
+Before adopting, wrapping, or hand-rewriting an op that has a 3rd-party
+library option (CK / AITER / hipBLAS(Lt) / primus-turbo / CUTLASS /
+FlashAttention / Triton), consult:
+
+- `knowledge/libraries/<lib>.md` for that library's design philosophy
+  and the patterns worth borrowing.
+- `knowledge/libraries/_patterns.md` for the cross-library decision
+  table ("custom-write vs CK vs AITER vs hipBLASLt vs Triton").
+
+Do not introduce a new library binding without citing which document
+informed the choice. New 3rd-party libraries get distilled via
+`.cursor/skills/distill-operator-repo/SKILL.md` → a fresh entry under
+`knowledge/libraries/`.
 
 ## MFMA / WMMA / Tensor Core code
 

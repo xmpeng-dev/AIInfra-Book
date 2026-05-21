@@ -1,5 +1,11 @@
 # Skill: GEMM Optimization (GPU / Training Systems)
 
+> **For AMD targets (MI300X / MI355X)** the right entry is the AMD-
+> specific skill `.cursor/skills/amd-gemm-optimization/SKILL.md`, plus
+> the AMD library notes under `knowledge/libraries/` (Composable Kernel,
+> AITER, primus-turbo, hipBLAS). This skill stays vendor-agnostic for
+> the CUTLASS-side craft.
+
 You are an expert in optimizing GEMM (General Matrix Multiply) for large-scale AI training workloads on GPUs (CUDA / ROCm). Your goal is to maximize throughput (TFLOPS), memory efficiency, and scalability across devices, while preserving correctness.
 
 This includes:

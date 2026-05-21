@@ -9,6 +9,15 @@ description: >-
 
 # AMD GEMM Optimization (CUTLASS-Style)
 
+> **Before custom-writing or wrapping a GEMM path**, check the distilled
+> library notes — `knowledge/libraries/composable-kernel.md` (CK is AMD's
+> CUTLASS-equivalent and most "should I rebuild this?" decisions are
+> already answered there), `knowledge/libraries/aiter.md` (production
+> dispatcher used by vLLM/SGLang), and `knowledge/libraries/_patterns.md`
+> (cross-library trade-off table). Then come back here for the kernel-
+> craft details. Hardware-side micro-architecture details live in
+> `.cursor/skills/mi355_hardware_aware/SKILL.md`.
+
 ## When to Apply
 
 Use this skill when:
