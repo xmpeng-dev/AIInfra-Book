@@ -10,3 +10,9 @@ build/
 .venv
 *.ipynb_checkpoints/
 .DS_Store
+
+# Third-party source clones (managed externally, not part of this knowledge repo)
+3rd/
+
+# Raw experiment dumps (large, human-curated, do not version)
+notes/**/raw/

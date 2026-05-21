@@ -1,0 +1,56 @@
+---
+description: Conventions for GPU kernel code and kernel-level analysis docs
+globs:
+  - "**/*.hip"
+  - "**/*.cu"
+  - "**/*.cuh"
+  - "**/*kernel*.py"
+  - "knowledge/kernels/**"
+  - "knowledge/hardware/**"
+alwaysApply: false
+---
+
+# GPU kernel conventions
+
+This repo discusses kernel work — it does not host kernel sources of
+its own. When editing or reasoning about kernel files (anywhere) or
+the corresponding documentation under `knowledge/kernels/` and
+`knowledge/hardware/`, follow these rules.
+
+## Hardware-first thinking
+
+- Always state the target architecture explicitly: **gfx942 (MI300X /
+  MI325X / CDNA3)** vs **gfx950 (MI355X / CDNA4)** vs **NVIDIA H100 /
+  B200**. Layouts, MFMA instructions, LDS sizes, and async-copy
+  behavior differ.
+- Reference `knowledge/hardware/<arch>.md` for register / LDS / cache
+  numbers — do not paste fresh numbers without a source.
+
+## MFMA / WMMA / Tensor Core code
+
+- Specify the exact instruction (e.g. `v_mfma_f32_16x16x32_f8f6f4` on
+  gfx950) and its required input layout (per-lane tile, banking).
+- Wavefront = **64** on AMD, warp = **32** on NVIDIA. Do not write
+  loops that assume one or the other silently.
+- LDS bank conflicts and swizzle are first-class concerns; if a kernel
+  has shared-memory loads, the doc must describe the layout.
+
+## Communication / overlap
+
+- For comm-compute overlap in HIP, consult
+  `.cursor/skills/cco-pipeline-overlap/SKILL.md` and
+  `knowledge/kernels/cco-overlap.md`.
+- Distinguish XGMI (intra-node), IPC handles, and RCCL — they are not
+  interchangeable.
+
+## Profiling claims
+
+Any quantitative claim (e.g. "44% LDS write busy", "MFMA 95% util")
+must cite the source trace or rocprof counter. Otherwise prefix with
+"estimate".
+
+## Cross-reference
+
+Before writing a new kernel pattern doc under `knowledge/kernels/`,
+grep there first; merge into the existing doc if the topic already
+exists.

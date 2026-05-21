@@ -1,0 +1,64 @@
+---
+description: Style and structure rules for notes, papers, and weekly reports
+globs:
+  - "notes/**/*.md"
+  - "papers/**/*.md"
+  - "weekly/**/*.md"
+  - "knowledge/**/*.md"
+alwaysApply: false
+---
+
+# Documentation style
+
+## Every document starts with a header block
+
+```markdown
+# <Short title>
+
+> **When**: 2026-05-21 10:30 UTC+8
+> **Where**: mi355-gpu-26 / xiaoming-dev container
+> **Context**: one-line link to the parent project or problem
+```
+
+The header is mandatory for **notes** (project work) and **weekly
+reports**. For papers and `knowledge/` docs, a one-line provenance is
+enough (paper link, or the experiment range that informed the doc).
+
+## Section conventions
+
+For a **progress note** (`notes/<project>/YYYY-MM-DD_HHMM_*.md`),
+include these sections in this order:
+
+1. **TL;DR** — 2–3 sentences, the punchline first.
+2. **Background** — what we knew before this work.
+3. **What I did** — commands, configs, code changes, with paths.
+4. **Result** — numbers, screenshots, trace links.
+5. **Interpretation** — why the number is what it is.
+6. **Next** — concrete follow-ups.
+
+For a **paper note** (`papers/<slug>.md`), see
+`.cursor/skills/read-paper/SKILL.md` — but always include: Problem,
+Contribution, Method, Experiments, Limitations, Our take.
+
+For a **weekly report** (`weekly/<year>/...`), see existing files in
+the same folder as the template.
+
+## Writing rules
+
+- Lead with the conclusion ("super-kernel loses at training scale" —
+  not "we ran an experiment to test super-kernel"). Detail follows.
+- Numbers must have units and a source. `1230 µs (rocprof step 21)`.
+  Not `1.2ms` with no source.
+- Cite paths and files in backticks. Cite other notes by relative path:
+  `[2026-05-13_2300_mmoe_forward_profile_super_kernel_is_95pct.md](...)`.
+- Use tables for comparisons (≥ 3 items × ≥ 2 attributes).
+- No emojis.
+- Chinese / English mixing is fine within a doc as long as section
+  headers are consistent. Match the language of the surrounding
+  project's existing notes.
+
+## After writing
+
+- Append a row to the parent project's `README.md` timeline (for
+  `notes/<project>/`) or to the relevant index table (for `papers/`,
+  `weekly/`).

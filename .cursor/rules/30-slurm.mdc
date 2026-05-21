@@ -1,0 +1,42 @@
+---
+description: SLURM / cluster job conventions
+globs:
+  - "**/*.sbatch"
+  - "**/slurm*.sh"
+  - "**/*slurm*.md"
+  - "scripts/**"
+alwaysApply: false
+---
+
+# SLURM & cluster conventions
+
+## Dev environment is a Podman container
+
+All cluster work happens inside the `xiaoming-dev` Podman container:
+
+- Start script: `scripts/start-xiaoming-dev-fix-container.sh`
+- Image: `docker.io/rocm/primus:v26.2`
+- Container mounts `$HOME`, working dir is `~/Primus`
+- IPC=host, network=host, exposes `/dev/kfd` `/dev/dri` `/dev/infiniband`
+
+Before running anything on a node, check whether the container already
+exists; reuse it. See:
+
+- `.cursor/skills/slurm-xiaoming-dev-container/SKILL.md` — local SLURM
+- `.cursor/skills/ssh-node-xiaoming-dev-container/SKILL.md` — SSH then
+  enter container
+
+## Picking nodes
+
+- Use `.cursor/skills/slurm-idle-node-check/SKILL.md` to find healthy
+  idle nodes (also verifies docker, NIC QoS, RDMA, GIDs).
+- Use `.cursor/skills/slurm-training-node-validation/SKILL.md` to
+  validate candidate nodes with a real workload before a big job.
+
+## Never
+
+- Do not start long-running training in foreground when on a shared
+  login node; always submit via `sbatch`.
+- Do not edit other users' jobs.
+- Do not commit job scripts that hard-code another user's path; use
+  `$HOME` or document the assumption.

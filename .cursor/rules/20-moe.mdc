@@ -1,0 +1,55 @@
+---
+description: MoE-specific conventions (algorithms, training, kernels)
+globs:
+  - "knowledge/moe/**"
+  - "papers/*moe*.md"
+  - "papers/*moe*/**"
+  - "notes/monolith-moe/**"
+  - "notes/monolith-ep/**"
+  - "notes/gpt-oss/**"
+alwaysApply: false
+---
+
+# MoE conventions
+
+## Terminology (use exactly)
+
+| Term | Meaning |
+|---|---|
+| **EP** | Expert Parallelism (experts sharded across ranks) |
+| **TP** | Tensor Parallelism (each expert's weights sharded) |
+| **DP** | Data Parallelism |
+| **PP** | Pipeline Parallelism |
+| **Dispatch** | All-to-all that sends tokens to their assigned experts |
+| **Combine** | All-to-all that returns expert outputs back to source ranks |
+| **Permute** | Local rearrangement before/after dispatch |
+| **FC1 / FC2** | First / second linear of an MoE expert MLP |
+| **Drop** | Capacity-based token dropping (capacity_factor < ∞) |
+| **Top-K** | Routing top-k (do not abbreviate to just "K") |
+
+Always use these names; do not invent synonyms.
+
+## Where to look first
+
+| Question | File |
+|---|---|
+| What does an MoE forward look like end-to-end? | `knowledge/moe/dataflow.md` |
+| What parallelism combinations exist? | `knowledge/moe/research-directions.md` |
+| What did paper X say? | `papers/<slug>.md` |
+| What experiments have we run on monolithic MoE kernel? | `notes/monolith-moe/README.md` (timeline) |
+
+## When writing a new MoE paper note
+
+- Filename: `papers/<slug>.md` (slug omits "moe" suffix when the project
+  itself includes it, e.g. `comet.md` not `comet-moe.md`).
+- Must include: problem, contribution, method (with a dataflow sketch),
+  experiments, limitations, our take. See
+  `.cursor/skills/read-paper/SKILL.md` or `paper-deep-analysis/SKILL.md`.
+- Update `papers/README.md` index table (Year | Title | Tags |
+  One-liner | File).
+
+## When writing a monolith-moe progress note
+
+- Filename: `notes/monolith-moe/YYYY-MM-DD_HHMM_<topic>.md`.
+- Append a row to the timeline in `notes/monolith-moe/README.md`.
+- Use `.cursor/skills/progress-note/SKILL.md`.
