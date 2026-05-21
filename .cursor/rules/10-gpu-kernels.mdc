@@ -65,6 +65,29 @@ informed the choice. New 3rd-party libraries get distilled via
 - Distinguish XGMI (intra-node), IPC handles, and RCCL — they are not
   interchangeable.
 
+## Data movement checklist
+
+Before writing or reviewing any kernel that moves bytes between HBM /
+XGMI peer / LDS / VGPR (dispatch / combine / permute / scatter / IPC
+staging / async-copy), read `knowledge/kernels/memory-access-patterns.md`
+and answer the 5 questions in its TL;DR:
+
+1. Cross-row read pattern contiguous? (else producer-side pre-pack)
+2. Cross-row write pattern contiguous? (else LDS staging)
+3. Are the same VGPRs holding both read result and write source? (else
+   async direct-to-LDS via `buffer_load_lds_b32` on gfx950 / `cp.async`
+   on Hopper+)
+4. Wave lockstep vs wave-independent? — match the choice to whether the
+   bottleneck is write-side throughput (lockstep) or read-side RTT
+   (independent).
+5. Does the chosen direction (push vs pull, who-owns-the-write) match
+   the hardware asymmetry? — XGMI outbound write is fire-and-forget,
+   inbound read pays RTT; HBM ≫ XGMI ≫ inter-node.
+
+Don't approve a data-movement PR whose description doesn't surface these
+five decisions. Failing one is fine if intentional; failing one silently
+is the M1b round 4 / M2-D regression family.
+
 ## Profiling claims
 
 Any quantitative claim (e.g. "44% LDS write busy", "MFMA 95% util")

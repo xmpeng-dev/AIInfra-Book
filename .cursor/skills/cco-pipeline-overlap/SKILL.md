@@ -14,6 +14,13 @@ description: >-
 
 # CCO Pipeline Overlap — Implementation Techniques
 
+> **Before applying any technique here, pass the 5-question review in
+> `knowledge/kernels/memory-access-patterns.md`** — its Q3 (register vs
+> LDS staging), Q4 (wave lockstep vs independent), and Q5 (push vs pull
+> direction) are prerequisites for *correctly choosing* the techniques
+> below. The checklist is short; the techniques here only pay off after
+> you've actually picked the right data movement pattern.
+
 ## When to Apply
 
 - Writing or reviewing `monolith_moe/v1_bf16/` (forward fuse) and the

@@ -87,6 +87,7 @@ slab/
 | If the user is doing... | Read first |
 |---|---|
 | Editing a HIP/CUDA kernel | `.cursor/rules/10-gpu-kernels.mdc` (auto), `slab/knowledge/kernels/`, `slab/knowledge/hardware/` |
+| Writing or reviewing a data-movement kernel (dispatch / combine / permute / scatter / IPC staging / async-copy) | `slab/knowledge/kernels/memory-access-patterns.md` (the 5-question checklist — Q1 cross-row read, Q2 cross-row write, Q3 register vs LDS staging, Q4 wave lockstep vs independent, Q5 push vs pull direction); pair with `.cursor/skills/cco-pipeline-overlap/SKILL.md` for super-kernel overlap |
 | Working on MoE algorithms or training | `.cursor/rules/20-moe.mdc` (auto), `slab/knowledge/moe/`, recent `slab/papers/` on MoE |
 | Touching SLURM scripts or cluster jobs | `.cursor/rules/30-slurm.mdc` (auto), `.cursor/skills/slurm-*` |
 | Writing notes / weekly reports / paper notes | `.cursor/rules/40-notes-style.mdc` (auto), the matching skill |

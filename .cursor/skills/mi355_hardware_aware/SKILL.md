@@ -482,6 +482,12 @@ __builtin_amdgcn_s_barrier();
 
 ## 9. Memory Access Patterns
 
+> Before reading this section's intrinsic-level mechanics, take 5 minutes
+> on `knowledge/kernels/memory-access-patterns.md` — that file frames
+> *which pattern to pick* (cross-row contiguity / LDS staging / wave
+> lockstep vs independent / push vs pull) before you decide *how to
+> implement it* with the intrinsics below.
+
 ### Global memory coalescing
 
 CDNA L1 / L2 cache lines are **128 B**. Coalescing rule of thumb:
