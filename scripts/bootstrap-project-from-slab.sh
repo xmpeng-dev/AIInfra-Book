@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
 # Bootstrap a project to use the slab knowledge repo as its shared
-# engineering context (rules + skills + AGENTS.md pointer).
+# engineering context.
+#
+# Installs three symlinks into the target project:
+#   - AGENTS.md                  -> slab/AGENTS.md
+#   - .cursor/rules/[00-89]*.mdc -> slab/.cursor/rules/*  (excludes 9*-local)
+#   - .cursor/skills/<each>      -> slab/.cursor/skills/<each>
 #
 # Idempotent. Safe to re-run. Uses symlinks; nothing is copied.
 # Per-machine (the slab path is absolute) — do NOT commit the
 # symlinks; add the suggested .gitignore entries below.
+#
+# Safety: if a target path already exists as a plain file (not a
+# symlink), it is left untouched and reported as [skip]. To re-bootstrap
+# such a project, delete the plain file first.
 #
 # Usage:
 #   bootstrap-project-from-slab.sh            # bootstrap current dir
@@ -42,17 +51,26 @@ fi
 log() { printf "%s\n" "$*"; }
 
 # ---------- discovery ----------
+# Cross-project rules only (00..89). Files named 90-*-local.mdc stay
+# slab-local and are NOT symlinked into sibling projects.
 RULES=()
-while IFS= read -r f; do RULES+=("$f"); done < <(ls "$SLAB/.cursor/rules"/*.mdc 2>/dev/null)
+while IFS= read -r f; do
+  base="$(basename "$f")"
+  case "$base" in
+    9[0-9]-*) continue ;;  # project-local; never symlink across projects
+  esac
+  RULES+=("$f")
+done < <(ls "$SLAB/.cursor/rules"/*.mdc 2>/dev/null)
 
 SKILLS=()
 while IFS= read -r d; do SKILLS+=("$d"); done < <(ls -d "$SLAB/.cursor/skills"/*/ 2>/dev/null)
 
-log "slab:    $SLAB"
-log "target:  $TARGET"
-log "rules:   ${#RULES[@]} files"
-log "skills:  ${#SKILLS[@]} dirs"
-log "mode:    $MODE"
+log "slab:     $SLAB"
+log "target:   $TARGET"
+log "AGENTS:   $SLAB/AGENTS.md"
+log "rules:    ${#RULES[@]} cross-project files"
+log "skills:   ${#SKILLS[@]} dirs"
+log "mode:     $MODE"
 log ""
 
 do_link() {
@@ -103,66 +121,25 @@ if [[ "$MODE" == "install" || "$MODE" == "check" ]]; then
   done
 
   log "== AGENTS.md =="
-  agents="$TARGET/AGENTS.md"
-  if [[ -e "$agents" ]]; then
-    log "  [skip] AGENTS.md exists — please ensure it references slab manually."
-  elif [[ "$MODE" == "check" ]]; then
-    log "  [write] AGENTS.md (starter template)"
-  else
-    project_name="$(basename "$TARGET")"
-    cat > "$agents" <<EOF
-# AGENTS.md — $project_name
-
-> Project-specific context for $project_name.
-> Shared engineering context lives in the slab knowledge repo:
-> see \`$SLAB/AGENTS.md\` and the symlinked rules / skills under
-> \`.cursor/rules/\` and \`.cursor/skills/\`.
-
-## What this project is
-
-<one paragraph: what $project_name is, who uses it, its entry points>
-
-## Where things live (project-local)
-
-<directory tour: code/, configs/, etc.>
-
-## Shared knowledge to consult
-
-When working in this project, the agent should consult:
-
-- \`$SLAB/AGENTS.md\` — global hardware / SLURM / commit conventions
-- \`$SLAB/knowledge/hardware/\` — GPU specs (MI300X / MI355X / B200 etc.)
-- \`$SLAB/knowledge/systems/\` — backend (TorchTitan / Megatron / Primus) know-how
-- \`$SLAB/knowledge/moe/\` — MoE dataflow, parallelism, research directions
-- \`$SLAB/knowledge/kernels/\` — GEMM / FP8 / comm-compute overlap patterns
-- \`$SLAB/papers/\` — paper notes (read the README first for the index)
-- \`$SLAB/notes/\` — sibling project work logs (gpt-oss / monolith-moe / etc.)
-
-The 5 slab rules under \`.cursor/rules/0[0-4]-*.mdc\` and all skills under
-\`.cursor/skills/\` are symlinked into this project — they auto-apply.
-
-## Project-local rules / skills
-
-Add files with prefix \`90-\` and above under \`.cursor/rules/\` or
-new directories under \`.cursor/skills/\` for things that are
-specific to $project_name. Do NOT edit symlinked content here —
-edit it in slab so all projects benefit.
-EOF
-    log "  wrote $agents"
-  fi
+  # AGENTS.md is symlinked back into slab so every project gets the
+  # same shared engineering context. Project-specific context belongs
+  # in .cursor/rules/90-<project>-local.mdc, not in this file.
+  do_link "$SLAB/AGENTS.md" "$TARGET/AGENTS.md"
 
   log ""
   log "== .gitignore reminder =="
   log "  Add these lines to $TARGET/.gitignore (symlinks are per-machine):"
   log ""
   log "    # slab symlinks (per-machine bootstrap, not portable)"
-  log "    .cursor/rules/0*.mdc"
+  log "    /AGENTS.md"
+  log "    /.cursor/rules/[0-8]*.mdc"
   log "    /.cursor/skills/amd-gemm-optimization"
   log "    /.cursor/skills/archive-notes"
   log "    /.cursor/skills/backend-gap-report"
   log "    /.cursor/skills/canvas-to-html"
   log "    /.cursor/skills/cco-pipeline-overlap"
   log "    /.cursor/skills/cuda_*"
+  log "    /.cursor/skills/distill-operator-repo"
   log "    /.cursor/skills/gpu-trace-analysis"
   log "    /.cursor/skills/mi355_hardware_aware"
   log "    /.cursor/skills/paper-deep-analysis"
@@ -171,16 +148,19 @@ EOF
   log "    /.cursor/skills/slurm-*"
   log "    /.cursor/skills/ssh-node-xiaoming-dev-container"
   log "    /.cursor/skills/trace-vram-canvas"
+  log "    /.cursor/skills/wire-knowledge-into-system"
+  log "    /.cursor/skills/create-slab-skill"
 fi
 
 # ---------- unlink ----------
 if [[ "$MODE" == "unlink" ]]; then
   log "== removing slab symlinks =="
+  do_unlink "$TARGET/AGENTS.md"
   for f in "$TARGET/.cursor/rules"/*.mdc; do [[ -e "$f" || -L "$f" ]] && do_unlink "$f"; done
   for d in "$TARGET/.cursor/skills"/*; do [[ -e "$d" || -L "$d" ]] && do_unlink "$d"; done
   log ""
   log "Project-local rules/skills (non-symlinks) left untouched."
-  log "AGENTS.md left untouched."
+  log "A plain (non-symlink) AGENTS.md, if present, is left untouched."
 fi
 
 log ""

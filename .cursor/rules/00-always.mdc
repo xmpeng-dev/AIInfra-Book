@@ -1,37 +1,39 @@
 ---
-description: Global engineering invariants for this knowledge repo
+description: Global engineering invariants shared across slab + sibling projects
 alwaysApply: true
 ---
 
 # Repo-wide invariants
 
-This is a **personal knowledge repo** (Markdown + Cursor skills/rules).
-There is no build, no test, no deployable artifact. Treat all changes
-as documentation edits.
+This rule is symlinked from `slab/.cursor/rules/00-always.mdc` into
+every sibling project. It applies to all of Xiaoming Peng's
+training-systems work (slab, MMOE, MonolithEP, Primus, Primus-dev,
+RocMoE, …).
 
-## Layout (top level)
+The **slab knowledge repo** at `~/workspace/slab/` is the single source
+of truth for cross-project knowledge: hardware specs, library
+distillations, paper notes, project work logs, rules, skills.
 
-```
-AGENTS.md  README.md  .cursor/  knowledge/  papers/  notes/  weekly/  artifacts/  scripts/
-```
+## Naming (for slab knowledge files and project docs)
 
-Do not introduce new top-level directories without updating both
-`AGENTS.md` and this file.
-
-## Naming
-
-- All new files & directories: **kebab-case**, lowercase, ASCII.
+- New files & directories: **kebab-case**, lowercase, ASCII.
 - Each directory has **exactly one `README.md`**. No `README_<x>.md`
   siblings.
 - Progress note: `YYYY-MM-DD_HHMM_<topic>.md` (minute precision).
-- Archive / paper note: `YYYY-MM-DD_<topic>.md` or just `<slug>.md` for
-  `papers/`.
+- Archive / paper note: `YYYY-MM-DD_<topic>.md` or `<slug>.md` for
+  `slab/papers/`.
+
+Application source code in sibling projects follows that project's own
+style; these naming rules apply to docs / notes / configs added by the
+agent, not to existing source files.
 
 ## Commits
 
-- Never commit without an explicit user instruction.
+- **Never** commit without an explicit user instruction.
 - One logical concern per commit; never bundle unrelated edits.
 - Imperative subject ≤ 72 chars.
+- Project-specific commit / branch / PR conventions live in that
+  project's `.cursor/rules/90-<project>-local.mdc`.
 
 ## Tone & formatting
 
@@ -47,7 +49,15 @@ Podman container `xiaoming-dev`. Comparison reference is NVIDIA
 H100 / H200 / B200. Do not assume CUDA-only paths; both ROCm and CUDA
 matter.
 
+## Symlinked content — do not edit in-place
+
+Files under `.cursor/rules/0[0-4]-*.mdc` and most directories under
+`.cursor/skills/` in any sibling project are **symlinks back into slab**.
+Editing them in-project affects every project. Always edit them in
+`~/workspace/slab/` instead.
+
 ## When unsure
 
-Grep `knowledge/` then `papers/` then `notes/` before asking. Never
-invent paper titles, hardware specs, command flags, or paths.
+Grep `~/workspace/slab/knowledge/` then `~/workspace/slab/papers/`
+then `~/workspace/slab/notes/` before asking. Never invent paper
+titles, hardware specs, command flags, or paths.

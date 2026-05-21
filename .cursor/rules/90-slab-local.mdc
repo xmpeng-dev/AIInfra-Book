@@ -1,0 +1,43 @@
+---
+description: Invariants specific to the slab knowledge repo (not symlinked into sibling projects)
+alwaysApply: true
+---
+
+# Slab-only invariants
+
+This rule is **not** symlinked. It only auto-applies when the agent
+is operating inside `~/workspace/slab/` itself. Sibling projects
+have their own `90-<project>-local.mdc`.
+
+## Repo nature
+
+Slab is a **personal knowledge base**, not application code. There is
+no build, no test suite, no deployable artifact. The deliverables are
+Markdown notes, design docs, Cursor skills/rules, and an occasional
+canvas / HTML export. Treat all changes as documentation edits.
+
+## Top-level layout (slab only)
+
+```
+AGENTS.md  README.md  .cursor/  knowledge/  papers/  notes/  weekly/  artifacts/  scripts/
+```
+
+Do not introduce new top-level directories without updating
+`AGENTS.md` (`§3`) and this file.
+
+## Commit & PR
+
+- Default branch: `main`.
+- Remote: `xmpeng-dev/system-lab` on GitHub.
+- Large directory restructures (`git mv`) should be done with one
+  logical group per commit so history stays bisectable.
+
+## Things the agent must not do (in slab)
+
+- Do not write into `.cursor/skills/` to record findings — that's what
+  `notes/` and `knowledge/` are for. Skills hold reusable procedures
+  only.
+- Do not create new `summary/`, `docs/`, or sibling `README_<x>.md`
+  files — they were deliberately retired in the May 2026 restructure.
+- Do not touch `notes/<project>/raw/` (raw experiment logs are
+  human-curated dumps; treat as read-only).
