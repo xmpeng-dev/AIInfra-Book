@@ -10,8 +10,8 @@
 ## 什么时候来查
 
 - 选型对比 / 报价表 → `gpu-comparison.md`
-- 写 kernel 前确认硬件参数(HBM/带宽/MFMA 峰值) → `gpu-comparison.md` 的相应表格
-- 想了解 CDNA4 微架构细节 → 配合 `.cursor/skills/mi355_hardware_aware/SKILL.md` 一起读
+- 写 kernel 前确认 chip 级参数(HBM 容量 / 带宽 / 板级算力对比) → `gpu-comparison.md`
+- 算子开发要的微架构细节 (XCD / NPS / MFMA 指令 / VGPR-AGPR / LDS / async direct-to-LDS / Triton-AMD 调参 / HIP intrinsic ↔ ISA) → `.cursor/skills/mi355_hardware_aware/SKILL.md` 是入口
 
 ## 编辑约定
 
