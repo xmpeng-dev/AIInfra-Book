@@ -3,11 +3,11 @@
 ## Purpose
 
 The closing stage of every successful session. Take the
-`learn_inputs` from `report.md` and update `skills/pilot/knowledge/`
+`learn_inputs` from `report.md` and update `knowledge/pilot/knowledge/`
 files so the next session starts smarter.
 
 LEARN is the **only** stage allowed to modify Skills (specifically
-under `knowledge/`). All other stages treat Skills as read-only.
+under `knowledge/pilot/knowledge/`). All other stages treat Skills as read-only.
 
 ## Inputs
 
@@ -169,7 +169,7 @@ state/learn_summary.yaml:
 
 ### Skill-side appends (the actual knowledge mutation)
 
-These go into `skills/pilot/knowledge/<file>.md` as appended YAML
+These go into `knowledge/pilot/knowledge/<file>.md` as appended YAML
 blocks, NOT inline in this state file:
 
 - `knowledge/patterns.md`     ← new patterns

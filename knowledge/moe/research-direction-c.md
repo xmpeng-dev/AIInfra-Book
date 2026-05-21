@@ -1,7 +1,7 @@
 # 方向 C 深度分析：FSEP 在 AMD 硬件上的原生实现与超越
 
 > **定位：** 对 README_research.md 方向 C 的完整展开  
-> **关联：** LAER_MoE_FSEP_reading_notes.md · rocflow/README.md  
+> **关联：** [`papers/laer-moe-fsep.md`](../../papers/laer-moe-fsep.md) · rocflow/README.md  
 > **硬件目标：** AMD MI300X / MI325X  
 > **更新：** 2026-03-09
 

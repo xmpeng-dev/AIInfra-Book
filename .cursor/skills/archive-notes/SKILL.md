@@ -25,7 +25,9 @@ notes/
   - `notes/monolith-moe/`     — MonolithMoE super-kernel + MoE comm-overlap
   - `notes/gpt-oss/`          — GPT-OSS-20B MLPerf tuning series
   - `notes/mlperf-llama/`     — Llama2-70B LoRA (NeMo vs Primus) MLPerf
-  - `notes/weekly-reports/`   — Cross-project weekly reports
+  - `notes/pilot/`            — Primus Pilot v2 auto-tuner project
+- **Cross-project weekly reports go to `weekly/<year>/`, NOT into `notes/`.** Use the existing files there as the template.
+- **Single-paper reading notes go to `papers/<slug>.md`, NOT into `notes/`.** Use the `read-paper` or `paper-deep-analysis` skill.
 - File naming format: `YYYY-MM-DD_HHMM_short_english_topic_slug.md` using local time, 24-hour `HHMM`, underscores, and lowercase words.
 - Use **today's date and current minute** as the prefix so files sort chronologically within a project and are easy to review in sequence.
 - **Every project directory must have a `README.md` project overview**. Follow existing project README patterns.
@@ -34,7 +36,7 @@ notes/
 
 1. If the conversation clearly continues an existing project, archive the note under that existing `notes/<project>/` directory.
 2. If it is a new project, create a short kebab-case project directory name, preferably no more than three words.
-3. If the content spans multiple projects, such as a weekly report or broad strategy summary, place it under `notes/weekly-reports/` or create a clear overview project.
+3. If the content spans multiple projects (weekly summary, cross-project strategy), put it under `weekly/<year>/` or create a clear overview project under `notes/`. Single-paper notes go to `papers/`, not `notes/`.
 4. When unsure, inspect the existing `notes/*/` directories first, then choose the best fit.
 
 ## Archive Workflow

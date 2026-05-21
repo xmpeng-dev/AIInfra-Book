@@ -12,33 +12,33 @@
 
 | 论文 | 发表 | 核心贡献 | 关键数字 | 笔记 |
 |------|------|---------|---------|------|
-| **MoEBlaze** | arXiv'26 | 内存墙突破：数据结构+Kernel融合+Smart AC | 4x加速，50%内存↓ | [笔记](./MoEBlaze_reading_notes.md) |
-| **LAER-MoE** | ASPLOS'26 | FSEP全分片+动态重排负载均衡 | 1.69x端到端 | [笔记](./LAER_MoE_FSEP_reading_notes.md) |
-| **SwiftMoE** | arXiv'25 | 参数-优化器解耦，动态Expert放置 | +30.5% 收敛 | [笔记](./SwiftMoE_reading_notes.md) |
-| **MemFine** | arXiv'25 | 细粒度Chunk激活调度+选择性重计算 | 48%内存↓ | [笔记](./MemFine_reading_notes.md) |
-| **MoE Parallel Folding** | arXiv'25 | 五维混合并行，Attn/MoE解耦 | 49.3% MFU | [笔记](./MoE_Parallel_Folding_reading_notes.md) |
-| **Comet** | MLSys'25 | Tile级计算-通信Overlap，Warp专用化 | 1.8x端到端 | [笔记](./Comet_reading_notes.md) |
-| **MegaScale-MoE** | EuroSys'26 | 万卡生产训练系统，容错+拓扑感知 | 42% MFU@10K GPU | [笔记](./MegaScale_MoE_reading_notes.md) |
-| **FlowMoE** | NeurIPS'25 | 统一流水线调度，Chunk优先级 | -57%训练时间 | [笔记](./FlowMoE_reading_notes.md) |
+| **MoEBlaze** | arXiv'26 | 内存墙突破：数据结构+Kernel融合+Smart AC | 4x加速，50%内存↓ | [笔记](../../papers/moeblaze.md) |
+| **LAER-MoE** | ASPLOS'26 | FSEP全分片+动态重排负载均衡 | 1.69x端到端 | [笔记](../../papers/laer-moe-fsep.md) |
+| **SwiftMoE** | arXiv'25 | 参数-优化器解耦，动态Expert放置 | +30.5% 收敛 | [笔记](../../papers/swiftmoe.md) |
+| **MemFine** | arXiv'25 | 细粒度Chunk激活调度+选择性重计算 | 48%内存↓ | [笔记](../../papers/memfine.md) |
+| **MoE Parallel Folding** | arXiv'25 | 五维混合并行，Attn/MoE解耦 | 49.3% MFU | [笔记](../../papers/moe-parallel-folding.md) |
+| **Comet** | MLSys'25 | Tile级计算-通信Overlap，Warp专用化 | 1.8x端到端 | [笔记](../../papers/comet.md) |
+| **MegaScale-MoE** | EuroSys'26 | 万卡生产训练系统，容错+拓扑感知 | 42% MFU@10K GPU | [笔记](../../papers/megascale-moe.md) |
+| **FlowMoE** | NeurIPS'25 | 统一流水线调度，Chunk优先级 | -57%训练时间 | [笔记](../../papers/flowmoe.md) |
 
 ### 🟠 推理系统类（Inference Systems）
 
 | 论文 | 发表 | 核心贡献 | 关键数字 | 笔记 |
 |------|------|---------|---------|------|
-| **MegaScale-Infer** | SIGCOMM'25 | 分离式EP，Prefill/Decode/Expert解耦 | 3.2x吞吐，55%成本↓ | [笔记](./MegaScale_Infer_reading_notes.md) |
-| **KTransformers** | SOSP'25 | CPU+GPU异构推理，消费级硬件跑671B | $5K跑DeepSeek-V3 | [笔记](./KTransformers_reading_notes.md) |
+| **MegaScale-Infer** | SIGCOMM'25 | 分离式EP，Prefill/Decode/Expert解耦 | 3.2x吞吐，55%成本↓ | [笔记](../../papers/megascale-infer.md) |
+| **KTransformers** | SOSP'25 | CPU+GPU异构推理，消费级硬件跑671B | $5K跑DeepSeek-V3 | [笔记](../../papers/ktransformers.md) |
 
 ### 🟢 架构创新类（Architecture）
 
 | 论文 | 发表 | 核心贡献 | 关键数字 | 笔记 |
 |------|------|---------|---------|------|
-| **OmniMoE** | arXiv'26 | 原子专家+笛卡尔积路由O(√N) | 10.9x推理加速 | [笔记](./OmniMoE_reading_notes.md) |
+| **OmniMoE** | arXiv'26 | 原子专家+笛卡尔积路由O(√N) | 10.9x推理加速 | [笔记](../../papers/omnimoe.md) |
 
 ### ⚪ 基础原理文档（Fundamentals）
 
 | 文档 | 内容 | 链接 |
 |------|------|------|
-| **MoE 详细计算过程与数据流** | 前向/反向计算、张量形状、A2A 通信与真实数据流示例 | [文档](./MoE_detailed_computation_dataflow.md) |
+| **MoE 详细计算过程与数据流** | 前向/反向计算、张量形状、A2A 通信与真实数据流示例 | [文档](./dataflow.md) |
 
 ---
 
