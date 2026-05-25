@@ -1,6 +1,6 @@
-# leann-paper — LEANN 低存储向量索引论文阅读
+# LEANN: A Low-Storage Overhead Vector Index
 
-> **目标**：系统阅读和归档 LEANN: A Low-Storage Overhead Vector Index，关注低存储向量检索、RAG 本地部署、图索引压缩、embedding 按需重算与相关系统路线。
+> **目标**：集中保存这篇论文的阅读报告、复现记录、补充材料和后续实验信息。
 > **论文**：[arXiv:2506.08276](https://arxiv.org/abs/2506.08276)
 > **代码**：[yichuan-w/LEANN](https://github.com/yichuan-w/LEANN)
 
@@ -17,7 +17,7 @@
 
 | 日期 | 里程碑 | 关键结论 | 来源 note |
 |---|---|---|---|
-| 2026-05-13 12:51 | LEANN 论文深度阅读报告 | LEANN 在 60M passages 上相对 HNSW 存储 188GB→4GB；核心代价是检索延迟从 0.05s 到 2.48s，但端到端 RAG 仍由生成阶段主导 | [`2026-05-13_1251_leann_low_storage_vector_index_report`](./2026-05-13_1251_leann_low_storage_vector_index_report.md) |
+| 2026-05-13 12:51 | LEANN 论文深度阅读报告 | LEANN 在 60M passages 上相对 HNSW 存储 188GB→4GB；核心代价是检索延迟从 0.05s 到 2.48s，但端到端 RAG 仍由生成阶段主导 | [`report.md`](./report.md) |
 
 ## 下一步
 
@@ -31,4 +31,4 @@
 
 | 主题 | 文件 |
 |---|---|
-| LEANN 论文深度中文报告 | [`2026-05-13_1251_leann_low_storage_vector_index_report.md`](./2026-05-13_1251_leann_low_storage_vector_index_report.md) |
+| LEANN 论文深度中文报告 | [`report.md`](./report.md) |

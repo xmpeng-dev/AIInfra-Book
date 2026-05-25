@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RocMoE-v2 Dispatch 5-Phase 耗时分解 — 2026-05-22</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg:               #ffffff;
+    --text-primary:     #0a0a0a;
+    --text-secondary:   #4a4a4a;
+    --text-tertiary:    #7a7a7a;
+    --text-quaternary:  #a0a0a0;
+    --text-on-accent:   #ffffff;
+    --fill-primary:     #f5f5f5;
+    --fill-secondary:   #ebebeb;
+    --fill-tertiary:    #fafafa;
+    --fill-quaternary:  #f3f3f3;
+    --stroke-primary:   #d0d0d0;
+    --stroke-secondary: #e1e1e1;
+    --stroke-tertiary:  #ececec;
+    --accent:           #2563eb;
+    --success:          #15803d;
+    --warning:          #b45309;
+    --danger:           #b91c1c;
+    --info:             #0e7490;
+    --success-bg:       #ecfdf5;
+    --warning-bg:       #fffbeb;
+    --danger-bg:        #fef2f2;
+    --info-bg:          #ecfeff;
+    --neutral-bg:       #f3f3f3;
+    --chart-1: #2563eb;
+    --chart-2: #7c3aed;
+    --chart-3: #0891b2;
+    --chart-4: #db2777;
+    --chart-5: #d97706;
+    --chart-6: #16a34a;
+    --chart-7: #dc2626;
+    --chart-8: #6b7280;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:               #0e0e10;
+      --text-primary:     #f4f4f6;
+      --text-secondary:   #b4b4be;
+      --text-tertiary:    #80808c;
+      --text-quaternary:  #5a5a64;
+      --fill-primary:     #1c1c20;
+      --fill-secondary:   #232328;
+      --fill-tertiary:    #18181b;
+      --fill-quaternary:  #141417;
+      --stroke-primary:   #2f2f35;
+      --stroke-secondary: #28282d;
+      --stroke-tertiary:  #1f1f23;
+      --accent:           #6ea4ff;
+      --success:          #4ade80;
+      --warning:          #fbbf24;
+      --danger:           #f87171;
+      --info:             #38bdf8;
+      --success-bg:       #062618;
+      --warning-bg:       #2a1c08;
+      --danger-bg:        #2a1313;
+      --info-bg:          #082630;
+      --neutral-bg:       #1c1c20;
+      --chart-1: #6ea4ff;
+      --chart-2: #a78bfa;
+      --chart-3: #38bdf8;
+      --chart-4: #f472b6;
+      --chart-5: #fbbf24;
+      --chart-6: #4ade80;
+      --chart-7: #f87171;
+      --chart-8: #9ca3af;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text-primary);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, system-ui,
+          "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { max-width: 1180px; margin: 0 auto; padding: 32px 24px 64px; }
+  .stack { display: flex; flex-direction: column; gap: 16px; }
+  .row   { display: flex; flex-direction: row; gap: 12px;
+           align-items: center; flex-wrap: wrap; }
+  .grid       { display: grid; gap: 16px; }
+  .grid-2     { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid-3     { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .grid-4     { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  @media (max-width: 900px) {
+    .grid-3, .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 540px) {
+    .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  }
+  h1, .h1 { font-size: 24px; font-weight: 600; margin: 0;
+            letter-spacing: -0.01em; }
+  h2, .h2 { font-size: 18px; font-weight: 600; margin: 0; }
+  h3, .h3 { font-size: 14px; font-weight: 600; margin: 0;
+            color: var(--text-primary); }
+  p, .text          { margin: 0; color: var(--text-primary); }
+  .text-secondary   { color: var(--text-secondary); }
+  .text-tertiary    { color: var(--text-tertiary); }
+  .text-small       { font-size: 12px; }
+  .text-mono        { font-family: ui-monospace, SFMono-Regular, Menlo,
+                                  monospace; }
+  .text-num         { font-feature-settings: "tnum" 1; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.92em; padding: 1px 5px;
+    background: var(--fill-secondary); border-radius: 3px;
+  }
+  .stat {
+    border: 1px solid var(--stroke-secondary);
+    border-radius: 8px; background: var(--fill-tertiary);
+    padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .stat-value {
+    font-size: 22px; font-weight: 600; letter-spacing: -0.01em;
+    font-feature-settings: "tnum" 1; line-height: 1.15;
+  }
+  .stat-label { font-size: 12px; color: var(--text-tertiary); }
+  .stat-success .stat-value { color: var(--success); }
+  .stat-warning .stat-value { color: var(--warning); }
+  .stat-danger  .stat-value { color: var(--danger);  }
+  .stat-info    .stat-value { color: var(--info);    }
+  .pill {
+    display: inline-flex; align-items: center;
+    height: 20px; padding: 0 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 500;
+    background: transparent; color: var(--text-secondary);
+    border: 1px solid var(--stroke-primary);
+    white-space: nowrap;
+  }
+  .pill-info    { background: var(--info-bg);    color: var(--info);
+                  border-color: transparent; }
+  .pill-neutral { background: var(--neutral-bg); border-color: transparent;
+                  color: var(--text-secondary); }
+  .pill-success { background: var(--success-bg); color: var(--success);
+                  border-color: transparent; }
+  .pill-warning { background: var(--warning-bg); color: var(--warning);
+                  border-color: transparent; }
+  .pill-danger  { background: var(--danger-bg);  color: var(--danger);
+                  border-color: transparent; }
+  .callout {
+    border: 1px solid var(--stroke-secondary);
+    border-left-width: 3px;
+    background: var(--fill-tertiary);
+    padding: 12px 14px; border-radius: 4px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .callout-title { font-weight: 600; font-size: 13px;
+                   color: var(--text-primary); }
+  .callout-success { border-left-color: var(--success);
+                     background: var(--success-bg); }
+  .callout-success .callout-title { color: var(--success); }
+  .callout-warning { border-left-color: var(--warning);
+                     background: var(--warning-bg); }
+  .callout-warning .callout-title { color: var(--warning); }
+  .callout-danger  { border-left-color: var(--danger);
+                     background: var(--danger-bg); }
+  .callout-danger  .callout-title { color: var(--danger); }
+  .callout-info    { border-left-color: var(--info);
+                     background: var(--info-bg); }
+  .callout-info    .callout-title { color: var(--info); }
+  .divider { border: 0; border-top: 1px solid var(--stroke-secondary);
+             margin: 4px 0; }
+  .table-shell {
+    border: 1px solid var(--stroke-secondary);
+    border-radius: 8px; overflow: hidden;
+    background: var(--fill-tertiary);
+  }
+  .table {
+    width: 100%; border-collapse: collapse;
+    font-size: 13px; font-feature-settings: "tnum" 1;
+  }
+  .table th, .table td {
+    text-align: left; padding: 8px 12px;
+    border-bottom: 1px solid var(--stroke-tertiary);
+    vertical-align: top;
+  }
+  .table tr:last-child td { border-bottom: 0; }
+  .table th {
+    font-weight: 600; color: var(--text-tertiary);
+    font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: var(--fill-quaternary);
+    border-bottom: 1px solid var(--stroke-secondary);
+  }
+  .table td.num, .table th.num,
+  .table td.right, .table th.right { text-align: right; }
+  .table td.center, .table th.center { text-align: center; }
+  .table tr.row-emphasis td { background: var(--fill-quaternary);
+                              font-weight: 600; }
+  .table tr.row-hot td      { background: var(--danger-bg); }
+  .table tr.row-warn td     { background: var(--warning-bg); }
+  svg { display: block; max-width: 100%; height: auto; }
+  .chart-frame {
+    border: 1px solid var(--stroke-secondary);
+    border-radius: 6px; background: var(--fill-tertiary);
+    padding: 12px;
+  }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px;
+            font-size: 12px; color: var(--text-secondary); }
+  .legend > span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch {
+    display: inline-block; width: 12px; height: 12px; border-radius: 2px;
+  }
+  @media print {
+    body { max-width: none; padding: 16px; }
+    .stat, .table-shell, .chart-frame, .callout { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<main class="stack" style="gap:24px">
+  <div class="stack" style="gap:6px">
+    <h1>RocMoE-v2 Dispatch 5-Phase 耗时分解 — 2026-05-22</h1>
+    <div class="row text-small text-secondary">
+      <span class="pill pill-info">8× MI355X (gfx950)</span>
+      <span class="pill pill-neutral">ROCm 7.2 / hipcc</span>
+      <span class="pill pill-neutral">M1c-A (`ROCMOE_DISPATCH_USE_PACKED_OUTBOX=1`)</span>
+      <span class="pill pill-neutral">DSv3 prod · T=8192 · EP=8 · iters=10</span>
+      <span class="pill pill-neutral">节点 mi355-gpu-7</span>
+    </div>
+    <p class="text-secondary text-small">
+      给 <code>rocmoe_dispatch_kernel</code> 加 per-WG <code>clock64()</code>
+      探针 (zero-overhead when null pointer) + 独立
+      <code>bench_dispatch_phases</code>。校准用 max-over-WG of
+      <code>(ts[8] − ts[0])</code> 对 <code>hipEventElapsedTime</code>，
+      实测 sclk = 2.400 GHz（对得上 MI355X boost 2.1-2.4 GHz）。
+      原始数据：
+      <code>RocMoE/bench_results/dispatch_phase_profile_20260522_1035.csv</code>；
+      原始 stdout：<code>RocMoE/bench_results/log_dispatch_phase_profile_20260522_1035/</code>；
+      分析笔记（同目录 md 版）：
+      <code>2026-05-22_1035_FLAT_dispatch_phase_profile_corrects_skew_mechanism.md</code>。
+    </p>
+  </div>
+
+  <div class="callout callout-danger">
+    <div class="callout-title">⚠️ 修订之前的归因</div>
+    <p>
+      2026-05-22 09:50 BASELINE note 说 dispatch 的 skew tax 是
+      <strong>receiver 端 per-block <code>block_ready</code> polling 等最慢 sender</strong>。
+      <strong>机理错了</strong>：当前
+      <code>csrc/include/rocmoe/dispatch_body.h::dispatch_receiver_stage</code>
+      里根本没有 per-block polling，cross-rank
+      <code>phase_barrier</code> 在 receiver 启动之前一次性完成，
+      实测仅占 wall <strong>0.6 % (39-64 μs)</strong>。
+      真正的 skew 来源在下表 §3 ——
+      Receiver per-rank imbalance + sender PhaseB pack max-rank +
+      syncB grid_sync<1>。
+    </p>
+    <p>
+      同时：09:50 note 说的 "M1b standalone" 其实是
+      <strong>M1c-A standalone (current default)</strong> ——
+      <code>ROCMOE_DISPATCH_USE_PACKED_OUTBOX</code> 在
+      <code>dispatch_body.h</code> 顶默认是 1，3-phase sender +
+      <code>packed_outbox</code> 路径整套激活。
+    </p>
+  </div>
+
+  <div class="grid grid-4" style="gap:12px">
+    <div class="stat">
+      <div class="stat-value">9.435 ms</div>
+      <div class="stat-label">balanced critical-path（p50 over 10 iters）</div>
+    </div>
+    <div class="stat stat-warning">
+      <div class="stat-value">+31 %</div>
+      <div class="stat-label">hot_cov50 vs balanced（hipEvent total）</div>
+    </div>
+    <div class="stat stat-danger">
+      <div class="stat-value">73 %</div>
+      <div class="stat-label">Receiver pull 占 hot wall</div>
+    </div>
+    <div class="stat stat-info">
+      <div class="stat-value">0.6 %</div>
+      <div class="stat-label">cross-rank phase_barrier 占 hot wall</div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <h2>1 · 探针布点 — 4 phase + 3 grid_sync + cross-rank phase_barrier</h2>
+  <p class="text-secondary text-small">
+    每个 WG 的 thread 0 在 9 个边界各写一个 <code>clock64()</code>
+    到 <code>args.phase_timestamps[blk*9 + i]</code>。
+    <code>args.phase_timestamps == nullptr</code> 时整段 branch 被
+    optimizer hoist 掉 —— 生产 bench 和 super-kernel
+    的 wall 不受影响。
+  </p>
+  <div class="table-shell">
+    <table class="table">
+      <thead>
+        <tr>
+          <th class="num">slot</th>
+          <th>位置</th>
+          <th>含义</th>
+          <th>参与 WG</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="num">ts[0]</td><td>kernel entry</td><td>每个 WG 起点</td><td>全 64 WG</td></tr>
+        <tr><td class="num">ts[1]</td><td>after PhaseA</td><td>sender 端 counting-sort + 写 peer <code>src_index_table</code></td><td>仅 sub_wg==0 (8/64)</td></tr>
+        <tr><td class="num">ts[2]</td><td>after grid_sync&lt;0&gt;</td><td>A→B 同步，让 sub_wg!=0 看到 <code>local_send_count</code></td><td>全 64 WG（tid 0 spin）</td></tr>
+        <tr><td class="num">ts[3]</td><td>after PhaseB</td><td>sender pack 行到 <code>packed_outbox</code>，8 sub-WG 协作</td><td>全 64 WG</td></tr>
+        <tr><td class="num">ts[4]</td><td>after grid_sync&lt;1&gt;</td><td>B→C 同步</td><td>全 64 WG</td></tr>
+        <tr><td class="num">ts[5]</td><td>after PhaseC</td><td>fence_system + 写 peer <code>expert_recv_count</code> + <code>send_done_flag</code></td><td>仅 sub_wg==0 (8/64)</td></tr>
+        <tr><td class="num">ts[6]</td><td>after phase_barrier</td><td>等所有 peer rank publish 完</td><td>仅 blk==0 (1/64)</td></tr>
+        <tr><td class="num">ts[7]</td><td>after grid_sync&lt;2&gt;</td><td>把 phase_barrier 的可见性传给全 grid</td><td>全 64 WG</td></tr>
+        <tr><td class="num">ts[8]</td><td>after Receiver</td><td>receiver 拉 peer <code>packed_outbox</code>，8 sub-WG 协作</td><td>全 64 WG</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout callout-info">
+    <div class="callout-title">为什么聚合只用 per-WG delta，不用跨 WG max/min</div>
+    <p>
+      实测 WG 0 起始 ts[0] = 5.883 × 10<sup>13</sup>, WG 63 起始
+      ts[0] = 5.795 × 10<sup>13</sup>，相差 10<sup>11</sup> cycles。
+      这是因为 <code>clock64()</code> 在 AMD CDNA 是
+      <strong>per-CU shader counter</strong>, 不同 CU 的 epoch 有任意 offset。
+      所以本报告所有 phase wall 都定义为
+      <strong>"max over WGs of (ts[p+1] − ts[p])"</strong> ——
+      只用 per-WG 内部的 delta，保证在同一 CU 时钟域。
+    </p>
+  </div>
+
+  <hr class="divider">
+
+  <h2>2 · Per-phase 耗时（DSv3 prod, T=8192, 8× MI355X）</h2>
+  <p class="text-secondary text-small">
+    数值是 8 rank × 10 iter 的中位，单位 ms。<strong>Σ phase walls
+    跟 hipEvent total 在 balanced 下偏差仅 0.18 ms</strong>，校准 OK。
+    <code>actv%</code> 是 "delta &gt; 5 % × phase wall 的 WG 比例" ——
+    可以反向验证布点（PhaseA / PhaseC 应该 = 12.5 % = 8/64，
+    phase_barrier 应该 = 1.6 % = 1/64）。
+  </p>
+  <div class="table-shell">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Phase</th>
+          <th class="num">balanced</th>
+          <th class="num">realistic_cov20</th>
+          <th class="num">hot_cov50</th>
+          <th class="num">Δ hot / bal</th>
+          <th class="num">占 hot wall</th>
+          <th class="num">actv %</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>PhaseA  sender meta</td>
+          <td class="num">0.136</td>
+          <td class="num">0.136</td>
+          <td class="num">0.137</td>
+          <td class="num">+1 %</td>
+          <td class="num">1.3 %</td>
+          <td class="num">12.5 %</td>
+        </tr>
+        <tr>
+          <td>syncA  grid_sync&lt;0&gt;</td>
+          <td class="num">0.138</td>
+          <td class="num">0.138</td>
+          <td class="num">0.139</td>
+          <td class="num">+1 %</td>
+          <td class="num">1.3 %</td>
+          <td class="num">96.9 %</td>
+        </tr>
+        <tr class="row-warn">
+          <td><strong>PhaseB  sender pack</strong></td>
+          <td class="num">1.177</td>
+          <td class="num">1.339</td>
+          <td class="num"><strong>1.662</strong></td>
+          <td class="num"><strong>+41 %</strong></td>
+          <td class="num">15.3 %</td>
+          <td class="num">100 %</td>
+        </tr>
+        <tr class="row-warn">
+          <td><strong>syncB  grid_sync&lt;1&gt;</strong></td>
+          <td class="num">0.115</td>
+          <td class="num">0.340</td>
+          <td class="num"><strong>0.833</strong></td>
+          <td class="num"><strong>+625 %</strong></td>
+          <td class="num">7.7 %</td>
+          <td class="num">~99 %</td>
+        </tr>
+        <tr>
+          <td>PhaseC  sender publish</td>
+          <td class="num">0.002</td>
+          <td class="num">0.002</td>
+          <td class="num">0.002</td>
+          <td class="num">—</td>
+          <td class="num">&lt;0.1 %</td>
+          <td class="num">12.5 %</td>
+        </tr>
+        <tr>
+          <td>PhaseBar  cross-rank</td>
+          <td class="num">0.026</td>
+          <td class="num">0.043</td>
+          <td class="num">0.066</td>
+          <td class="num">+154 %</td>
+          <td class="num"><strong>0.6 %</strong></td>
+          <td class="num">1.6 %</td>
+        </tr>
+        <tr>
+          <td>syncC  grid_sync&lt;2&gt;</td>
+          <td class="num">0.030</td>
+          <td class="num">0.047</td>
+          <td class="num">0.071</td>
+          <td class="num">+137 %</td>
+          <td class="num">0.6 %</td>
+          <td class="num">~99 %</td>
+        </tr>
+        <tr class="row-hot">
+          <td><strong>Receiver  pull</strong></td>
+          <td class="num"><strong>7.963</strong></td>
+          <td class="num"><strong>7.976</strong></td>
+          <td class="num"><strong>7.989</strong></td>
+          <td class="num">+0 %</td>
+          <td class="num"><strong>73.3 %</strong></td>
+          <td class="num">100 %</td>
+        </tr>
+        <tr class="row-emphasis">
+          <td>Σ phase walls</td>
+          <td class="num">9.586</td>
+          <td class="num">10.021</td>
+          <td class="num">10.901</td>
+          <td class="num">+14 %</td>
+          <td class="num">100 %</td>
+          <td class="num">—</td>
+        </tr>
+        <tr class="row-emphasis">
+          <td>hipEvent total（critical-path rank）</td>
+          <td class="num">9.435</td>
+          <td class="num">10.406</td>
+          <td class="num">12.381</td>
+          <td class="num">+31 %</td>
+          <td class="num">—</td>
+          <td class="num">—</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 style="margin-top:8px">2.1 · 三档 skew 下 8 个 phase 的可视化堆叠</h3>
+  <div class="chart-frame">
+    <!-- Stacked bar: 3 rows × 8 segments. Total widths:
+         balanced 9.586 / realistic 10.021 / hot 10.901. Scale to 100% of 12.5 ms. -->
+    <svg viewBox="0 0 720 280" role="img"
+         aria-label="Per-skew dispatch wall stacked bar chart">
+      <!-- axis grid -->
+      <g font-size="11" fill="currentColor" font-family="ui-monospace, monospace"
+         style="color: var(--text-tertiary)">
+        <line x1="120" y1="220" x2="120" y2="40" stroke="currentColor"
+              stroke-width="0.5" stroke-dasharray="2 3"/>
+        <line x1="220" y1="220" x2="220" y2="40" stroke="currentColor"
+              stroke-width="0.5" stroke-dasharray="2 3"/>
+        <line x1="320" y1="220" x2="320" y2="40" stroke="currentColor"
+              stroke-width="0.5" stroke-dasharray="2 3"/>
+        <line x1="420" y1="220" x2="420" y2="40" stroke="currentColor"
+              stroke-width="0.5" stroke-dasharray="2 3"/>
+        <line x1="520" y1="220" x2="520" y2="40" stroke="currentColor"
+              stroke-width="0.5" stroke-dasharray="2 3"/>
+        <line x1="620" y1="220" x2="620" y2="40" stroke="currentColor"
+              stroke-width="0.5" stroke-dasharray="2 3"/>
+        <text x="120" y="238" text-anchor="middle">0</text>
+        <text x="220" y="238" text-anchor="middle">2.5</text>
+        <text x="320" y="238" text-anchor="middle">5.0</text>
+        <text x="420" y="238" text-anchor="middle">7.5</text>
+        <text x="520" y="238" text-anchor="middle">10.0</text>
+        <text x="620" y="238" text-anchor="middle">12.5 ms</text>
+      </g>
+      <!-- row labels -->
+      <g font-size="12" fill="currentColor" font-weight="600"
+         style="color: var(--text-primary)">
+        <text x="110" y="74" text-anchor="end">balanced</text>
+        <text x="110" y="124" text-anchor="end">realistic_cov20</text>
+        <text x="110" y="174" text-anchor="end">hot_cov50</text>
+      </g>
+      <!-- balanced row -->
+      <!-- start x=120; each ms = 40px -->
+      <g>
+        <rect x="120" y="56" width="5.44" height="36" fill="var(--chart-1)"/>      <!-- PhaseA 0.136 -->
+        <rect x="125.44" y="56" width="5.52" height="36" fill="var(--chart-2)"/>   <!-- syncA 0.138 -->
+        <rect x="130.96" y="56" width="47.08" height="36" fill="var(--chart-5)"/>  <!-- PhaseB 1.177 -->
+        <rect x="178.04" y="56" width="4.60" height="36" fill="var(--chart-3)"/>   <!-- syncB 0.115 -->
+        <rect x="182.64" y="56" width="0.08" height="36" fill="var(--chart-4)"/>   <!-- PhaseC 0.002 -->
+        <rect x="182.72" y="56" width="1.04" height="36" fill="var(--chart-6)"/>   <!-- PhaseBar 0.026 -->
+        <rect x="183.76" y="56" width="1.20" height="36" fill="var(--chart-8)"/>   <!-- syncC 0.030 -->
+        <rect x="184.96" y="56" width="318.52" height="36" fill="var(--chart-7)"/> <!-- Receiver 7.963 -->
+      </g>
+      <!-- realistic row -->
+      <g>
+        <rect x="120" y="106" width="5.44" height="36" fill="var(--chart-1)"/>
+        <rect x="125.44" y="106" width="5.52" height="36" fill="var(--chart-2)"/>
+        <rect x="130.96" y="106" width="53.56" height="36" fill="var(--chart-5)"/>
+        <rect x="184.52" y="106" width="13.60" height="36" fill="var(--chart-3)"/>
+        <rect x="198.12" y="106" width="0.08" height="36" fill="var(--chart-4)"/>
+        <rect x="198.20" y="106" width="1.72" height="36" fill="var(--chart-6)"/>
+        <rect x="199.92" y="106" width="1.88" height="36" fill="var(--chart-8)"/>
+        <rect x="201.80" y="106" width="319.04" height="36" fill="var(--chart-7)"/>
+      </g>
+      <!-- hot row -->
+      <g>
+        <rect x="120" y="156" width="5.48" height="36" fill="var(--chart-1)"/>
+        <rect x="125.48" y="156" width="5.56" height="36" fill="var(--chart-2)"/>
+        <rect x="131.04" y="156" width="66.48" height="36" fill="var(--chart-5)"/>
+        <rect x="197.52" y="156" width="33.32" height="36" fill="var(--chart-3)"/>
+        <rect x="230.84" y="156" width="0.08" height="36" fill="var(--chart-4)"/>
+        <rect x="230.92" y="156" width="2.64" height="36" fill="var(--chart-6)"/>
+        <rect x="233.56" y="156" width="2.84" height="36" fill="var(--chart-8)"/>
+        <rect x="236.40" y="156" width="319.56" height="36" fill="var(--chart-7)"/>
+      </g>
+    </svg>
+    <div class="legend" style="margin-top:8px">
+      <span><span class="swatch" style="background:var(--chart-1)"></span>PhaseA</span>
+      <span><span class="swatch" style="background:var(--chart-2)"></span>syncA</span>
+      <span><span class="swatch" style="background:var(--chart-5)"></span>PhaseB pack</span>
+      <span><span class="swatch" style="background:var(--chart-3)"></span>syncB</span>
+      <span><span class="swatch" style="background:var(--chart-4)"></span>PhaseC</span>
+      <span><span class="swatch" style="background:var(--chart-6)"></span>cross-rank PB</span>
+      <span><span class="swatch" style="background:var(--chart-8)"></span>syncC</span>
+      <span><span class="swatch" style="background:var(--chart-7)"></span>Receiver pull</span>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <h2>3 · Receiver per-rank 离散度 — 真正的 critical-path 来源</h2>
+  <p class="text-secondary text-small">
+    §2 的表里 Receiver mean 几乎不动（~8 ms），但 hipEvent
+    critical-path 在 hot 下涨 +31 %。差异在哪？答案是
+    <strong>per-rank 离散度</strong>：持有 hot expert 的 rank 比其他 rank
+    多收很多 token，pull 时间更长，决定整 iter 的 critical path。
+  </p>
+  <div class="table-shell">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>指标</th>
+          <th class="num">balanced</th>
+          <th class="num">realistic_cov20</th>
+          <th class="num">hot_cov50</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Receiver wall 最慢 rank</td>
+          <td class="num">8.033</td>
+          <td class="num">8.872</td>
+          <td class="num"><strong>10.502</strong></td>
+        </tr>
+        <tr>
+          <td>Receiver wall 最快 rank</td>
+          <td class="num">7.886</td>
+          <td class="num">7.369</td>
+          <td class="num">6.256</td>
+        </tr>
+        <tr class="row-hot">
+          <td>Receiver per-rank 离散度（max − min）</td>
+          <td class="num">0.15</td>
+          <td class="num">1.50</td>
+          <td class="num"><strong>4.25</strong></td>
+        </tr>
+        <tr>
+          <td>PhaseB pack 最慢 rank</td>
+          <td class="num">1.199</td>
+          <td class="num">1.372</td>
+          <td class="num"><strong>1.709</strong></td>
+        </tr>
+        <tr>
+          <td>syncB grid_sync&lt;1&gt; 最慢 rank</td>
+          <td class="num">0.140</td>
+          <td class="num">0.371</td>
+          <td class="num"><strong>0.868</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <hr class="divider">
+
+  <h2>4 · 修订后的 skew 损失分解</h2>
+  <div class="grid grid-3">
+    <div class="callout callout-danger">
+      <div class="callout-title">真正的 skew 主因 #1（≈ 2.5 ms abs in hot）</div>
+      <p>
+        <strong>Receiver per-rank imbalance</strong>。
+        持有 hot expert 的 rank 在 receiver 阶段多干 ~30 %
+        的活，决定 hipEvent critical path。
+        Mean-across-rank 看不出来（mean ≈ 8 ms 不变），
+        但 max-rank 跳到 10.5 ms。
+      </p>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">真正的 skew 主因 #2（+0.49 ms abs in hot）</div>
+      <p>
+        <strong>PhaseB sender pack 最慢 partner</strong>。
+        hot expert 所在的 (dst_rank, hot_e) bucket 比 balanced
+        多 ~6× token，那个 partner 慢 +41 %。
+        8 个 sub-WG 协作摊薄了大部分但仍剩 0.5 ms tail。
+      </p>
+    </div>
+    <div class="callout callout-warning">
+      <div class="callout-title">真正的 skew 主因 #3（+0.72 ms abs in hot）</div>
+      <p>
+        <strong>syncB grid_sync&lt;1&gt;</strong> +625 % 相对。
+        fast partner 早早干完 PhaseB 后必须在
+        <code>grid_sync&lt;1&gt;</code> 上自旋等最慢的 partner ——
+        是 #2 的 grid-wide 显化。
+      </p>
+    </div>
+    <div class="callout callout-info">
+      <div class="callout-title">几乎可以忽略 #1 — cross-rank phase_barrier</div>
+      <p>
+        实测 26-66 μs，占 wall <strong>0.6 %</strong>。
+        09:50 note 把 skew tax 归因到这里 —— <strong>错了</strong>。
+        cross-rank PB 在 receiver 启动前一次性完成，
+        不存在 per-block polling。
+      </p>
+    </div>
+    <div class="callout callout-info">
+      <div class="callout-title">几乎可以忽略 #2 — PhaseA / PhaseC</div>
+      <p>
+        PhaseA = counting sort 总功 = T·topk，跟分布无关；
+        PhaseC = 写 epg+1 个 u32 + fence_system。
+        Δ &lt; 1 %，绝对 ~140 μs + ~2 μs。skew-immune by design。
+      </p>
+    </div>
+    <div class="callout callout-info">
+      <div class="callout-title">M2-G overlap 上限重估</div>
+      <p>
+        Receiver pull 占 wall 73 %（balanced ~8 ms）。
+        FC1 grouped GEMM 在 DSv3 prod 形状 roofline ≈ 1.5 ms。
+        即使完美 overlap，最多省 <strong>15 %</strong>。
+        M2-G 之后还得靠 <strong>M3 (FC1+SwiGLU+FC2 fused)
+        或 mxfp8 weights</strong> 才能把 GEMM 阶段拉到跟 dispatch
+        同量级。
+      </p>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <h2>5 · 下一步</h2>
+  <div class="table-shell">
+    <table class="table">
+      <thead>
+        <tr>
+          <th class="num">优先级</th>
+          <th>事项</th>
+          <th>说明</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="row-emphasis">
+          <td class="num center">⬅ next</td>
+          <td>跑 <code>build/bench_gemm</code> 量 FC1 真实 ms</td>
+          <td>
+            DSv3 prod 形状 (M ≈ 65536, N=2048, K=7168 grouped)。
+            校准 M2-G overlap 上限：如果 FC1 真的只 ~1.5 ms，
+            M2-G 单独不足以反超 MCore baseline (DSv3 T=8192 = 18.13 ms)，
+            需要在 M2-G 之后立刻接 M3 fused。
+          </td>
+        </tr>
+        <tr>
+          <td class="num center">P1</td>
+          <td>M2-G GEMM body 装进 super-kernel</td>
+          <td>
+            按原 [m2d note](./2026-05-21_1930_BASELINE_m2d_dispatch_in_super_kernel.md)
+            验收门走；phase profile 工具留着，M2-G 后重跑同一组
+            3-skew profile，对比 dispatch wall 被 FC1 吃掉多少。
+          </td>
+        </tr>
+        <tr>
+          <td class="num center">P2 (可选)</td>
+          <td>跑一组真 M1b 的 phase profile</td>
+          <td>
+            重 build <code>-DROCMOE_DISPATCH_USE_PACKED_OUTBOX=0</code>，
+            看 M1b (scatter 读 input_token_buf) 的 Receiver / PhaseB
+            各自怎么变。预期 PhaseB ≈ 0（pack no-op），
+            Receiver 更短但 max-rank 离散度可能更大。
+            <strong>不阻塞 M2-G。</strong>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <hr class="divider">
+
+  <h2>附录 — 复现命令</h2>
+  <pre style="background:var(--fill-secondary); padding:12px 14px;
+              border-radius:6px; font-size:12px; overflow-x:auto;
+              font-family:ui-monospace, SFMono-Regular, Menlo, monospace;">
+# build (in xiaoming-dev container on a SLURM-allocated node)
+bash scripts/dev_on_node.sh build
+
+# 3 个 skew profile 各跑一次，DSv3 prod 形状
+bash scripts/dev_on_node.sh raw \
+    'build/bench_dispatch_phases 8 256 8 8192 7168 32 5 10 dsv3 4 balanced 4'
+bash scripts/dev_on_node.sh raw \
+    'build/bench_dispatch_phases 8 256 8 8192 7168 32 5 10 dsv3 4 realistic_cov20 4'
+bash scripts/dev_on_node.sh raw \
+    'build/bench_dispatch_phases 8 256 8 8192 7168 32 5 10 dsv3 8 hot_cov50 4'
+#                                              ^^^ hot 要 max_recv_factor=8 防 overflow</pre>
+
+</main>
+</body>
+</html>
