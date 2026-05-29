@@ -58,6 +58,22 @@ import torch.distributed as dist
 # All Turbo kernels live in primus_turbo.pytorch.{ops,modules}.
 import primus_turbo.pytorch as turbo
 
+# When PRIMUS_TURBO_AUTO_TUNE=1 is set we short-circuit the MoE
+# dispatch / combine autotune to avoid the global side effect that
+# regresses DeepEP combine latency by 10–15% (see comments in
+# run_all_models.sh and README §Autotune experiment). The
+# grouped-GEMM dispatchers still autotune normally because that's
+# where the real wins are. This only fires when the user explicitly
+# opts into autotune; the default no-autotune path is unaffected.
+if os.environ.get("PRIMUS_TURBO_AUTO_TUNE", "0") == "1":
+    from primus_turbo.pytorch.kernels.moe.moe_dispatch_combine_impl import (
+        MoECombineKernelDispatcher as _MoECombineDispatcher,
+        MoEDispatchKernelDispatcher as _MoEDispatchDispatcher,
+    )
+
+    _MoEDispatchDispatcher.tune = classmethod(lambda _cls, **_kw: None)
+    _MoECombineDispatcher.tune = classmethod(lambda _cls, **_kw: None)
+
 # ---------------------------------------------------------------------------
 # CLI / config
 # ---------------------------------------------------------------------------
@@ -217,6 +233,85 @@ class StageTimer:
     def reset(self):
         self.start_events.clear()
         self.end_events.clear()
+
+
+class BackwardStageTimer:
+    """Per-stage backward timing via non-leaf tensor `register_hook`.
+
+    For each forward stage S we register a hook on its primary output tensor.
+    autograd fires the hook when grad has been computed on that tensor —
+    i.e., right BEFORE stage S's backward kernel runs (because the next
+    downstream stage's backward just finished and routed grad to S's output).
+
+    Per-stage backward time, in forward order [S_1 .. S_N]:
+        bwd_us[S_k] = elapsed(hook_event[S_k], hook_event[S_{k-1}])
+                      for k = 2..N
+        bwd_us[S_1] = residual = e2e_bwd_ms - sum(bwd_us[S_2..S_N])
+                      Leaf-tensor `AccumulateGrad` hooks fire at unpredictable
+                      times so we attribute the leftover (stage_1 bwd plus
+                      autograd dispatch overhead) to the first stage.
+    """
+
+    def __init__(self, stage_names: List[str]):
+        self.stage_names = list(stage_names)
+        # iter_events[i][stage_name] = CUDA event recorded by the hook
+        self._iter_events: List[dict] = []
+        self._current_iter: Optional[dict] = None
+
+    def begin_iter(self):
+        self._current_iter = {}
+
+    def end_iter(self):
+        if self._current_iter is not None:
+            self._iter_events.append(self._current_iter)
+        self._current_iter = None
+
+    def register(self, name: str, tensor) -> None:
+        if self._current_iter is None:
+            return
+        if not isinstance(tensor, torch.Tensor) or not tensor.requires_grad:
+            return
+        # Skip leaf tensors: their AccumulateGrad hooks fire at unpredictable
+        # times relative to other backward kernels, so the elapsed-time would
+        # not reflect that stage's work.
+        if tensor.is_leaf:
+            return
+        evt = torch.cuda.Event(enable_timing=True)
+        self._current_iter[name] = evt
+
+        def _hook(_grad):
+            evt.record()
+
+        tensor.register_hook(_hook)
+
+    def per_stage_ms_samples(self, e2e_bwd_ms_list: Optional[List[float]] = None) -> dict:
+        """Per-stage backward ms across all timed iterations.
+
+        For stages 2..N: elapsed(hook[S], hook[S-1]).
+        For stage 1: residual = e2e_bwd_ms - sum(stages 2..N).
+        """
+        results = {name: [] for name in self.stage_names}
+        for i, events in enumerate(self._iter_events):
+            iter_stage_sum = 0.0
+            for k in range(1, len(self.stage_names)):
+                stage = self.stage_names[k]
+                evt_this = events.get(stage)
+                evt_next = events.get(self.stage_names[k - 1])
+                if evt_this is None or evt_next is None:
+                    continue
+                try:
+                    ms = evt_this.elapsed_time(evt_next)
+                    if ms >= 0:
+                        results[stage].append(ms)
+                        iter_stage_sum += ms
+                except Exception:
+                    pass
+            if e2e_bwd_ms_list is not None and i < len(e2e_bwd_ms_list):
+                residual = e2e_bwd_ms_list[i] - iter_stage_sum
+                if residual < 0:
+                    residual = 0.0
+                results[self.stage_names[0]].append(residual)
+        return results
 
 
 def _all_reduce_scalar(value: float, op=dist.ReduceOp.AVG) -> float:
@@ -383,6 +478,7 @@ class TurboMoELayer(torch.nn.Module):
         hidden_states: torch.Tensor,
         probs: torch.Tensor,
         stage_timer: Optional[dict] = None,
+        bwd_timer: Optional["BackwardStageTimer"] = None,
     ) -> torch.Tensor:
         assert hidden_states.shape == (self.num_tokens, self.hidden_size)
         assert probs.shape == (self.num_tokens, self.num_experts)
@@ -398,6 +494,10 @@ class TurboMoELayer(torch.nn.Module):
             t.end()
             return out
 
+        def _bwd_hook(name: str, tensor):
+            if bwd_timer is not None:
+                bwd_timer.register(name, tensor)
+
         # ---- DISPATCH ----------------------------------------------------------
         hidden_states, probs_topk = _maybe(
             "dispatch_preprocess",
@@ -405,14 +505,17 @@ class TurboMoELayer(torch.nn.Module):
                 hidden_states, probs, routing_map=None, token_indices=token_indices
             ),
         )
+        _bwd_hook("dispatch_preprocess", hidden_states)
         dispatched_tokens, dispatched_probs = _maybe(
             "token_dispatch",
             lambda: self.dispatcher._exec_dispatch(hidden_states, probs_topk),
         )
+        _bwd_hook("token_dispatch", dispatched_tokens)
         permuted_input, tokens_per_expert, permuted_probs = _maybe(
             "dispatch_postprocess",
             lambda: self.dispatcher._post_dispatch(dispatched_tokens, dispatched_probs),
         )
+        _bwd_hook("dispatch_postprocess", permuted_input)
 
         # tokens_per_expert is int64; grouped_gemm wants int64 group_lens.
         # When CUDA tokens_per_expert is enabled it's already on device.
@@ -430,6 +533,7 @@ class TurboMoELayer(torch.nn.Module):
                 trans_b=False,
             ),
         )
+        _bwd_hook("grouped_gemm_fc1", fc1_output)
 
         # ---- SwiGLU + probs ----------------------------------------------------
         # Mirrors PrimusTurboGroupedMLP._activation_func_with_probs (primus_turbo.py:1299-1306):
@@ -442,6 +546,7 @@ class TurboMoELayer(torch.nn.Module):
             return turbo.ops.swiglu_with_probs(fc1_output, permuted_probs, row_mask)
 
         activated = _maybe("swiglu_with_probs", _act)
+        _bwd_hook("swiglu_with_probs", activated)
 
         # ---- FC2 ---------------------------------------------------------------
         fc2_output = _maybe(
@@ -453,20 +558,24 @@ class TurboMoELayer(torch.nn.Module):
                 trans_b=False,
             ),
         )
+        _bwd_hook("grouped_gemm_fc2", fc2_output)
 
         # ---- COMBINE -----------------------------------------------------------
         combine_input = _maybe(
             "combine_preprocess",
             lambda: self.dispatcher._pre_combine(fc2_output),
         )
+        _bwd_hook("combine_preprocess", combine_input)
         combined = _maybe(
             "token_combine",
             lambda: self.dispatcher._exec_combine(combine_input),
         )
+        _bwd_hook("token_combine", combined)
         output = _maybe(
             "combine_postprocess",
             lambda: self.dispatcher._post_combine(combined),
         )
+        _bwd_hook("combine_postprocess", output)
 
         return output
 
@@ -488,18 +597,22 @@ STAGE_NAMES = [
     "combine_postprocess",
 ]
 
-# Grouping used by the breakdown table that mirrors the DeepSeek-V3 dispatch
-# reference table the user shared (columns: sort / dispatch / fused_moe /
-# combine / misc / all_kernels).
+# Grouping used by the breakdown table. fc1 / swiglu / fc2 are now reported
+# individually (each with its own time + TFLOPS). `fused_moe` is preserved as
+# a derived sum for back-compat with the original DeepSeek-V3 reference table.
 #   sort      = router topk done inside _pre_dispatch
 #   dispatch  = DeepEP A2A (moe_dispatch)
-#   fused_moe = expert MLP (fc1 + swiglu + fc2)
+#   fc1       = first grouped GEMM (hidden -> 2*ffn, gate+up)
+#   swiglu    = swiglu_with_probs (2*ffn -> ffn, * prob)
+#   fc2       = second grouped GEMM (ffn -> hidden)
 #   combine   = DeepEP A2A (moe_combine)
 #   misc      = permute / unpermute / indices_to_multihot / view
 STAGE_GROUPS = {
     "sort": ["dispatch_preprocess"],
     "dispatch": ["token_dispatch"],
-    "fused_moe": ["grouped_gemm_fc1", "swiglu_with_probs", "grouped_gemm_fc2"],
+    "fc1": ["grouped_gemm_fc1"],
+    "swiglu": ["swiglu_with_probs"],
+    "fc2": ["grouped_gemm_fc2"],
     "combine": ["token_combine"],
     "misc": ["dispatch_postprocess", "combine_preprocess", "combine_postprocess"],
 }
@@ -637,9 +750,11 @@ class RunResult:
 
     num_tokens: int
     per_stage_mean_ms: dict
+    per_stage_bwd_mean_ms: dict
     e2e_forward_mean_ms: float
     e2e_backward_mean_ms: Optional[float]
     raw_per_stage_ms: dict
+    raw_per_stage_bwd_ms: dict
     raw_e2e_ms: dict
 
 
@@ -687,7 +802,12 @@ def _run_one_point(
     for _ in range(args.warmup):
         out = moe(hidden_states, probs)
         if do_bwd:
-            out.sum().backward()
+            # NOTE: ``out.sum().backward()`` produces a broadcast-expanded
+            # `ones_like(out)` grad tensor that DeepEP's combine-backward
+            # (a reverse dispatch) refuses with `is_contiguous` assertions.
+            # Always feed an explicit contiguous grad.
+            grad_out = torch.randn_like(out)
+            out.backward(grad_out)
             moe.w1.grad = None
             moe.w2.grad = None
             if hidden_states.grad is not None:
@@ -696,12 +816,15 @@ def _run_one_point(
     dist.barrier()
 
     stage_timer = {name: StageTimer(name) for name in STAGE_NAMES}
+    bwd_timer = BackwardStageTimer(STAGE_NAMES) if do_bwd else None
     e2e_fwd = StageTimer("e2e_forward")
     e2e_bwd = StageTimer("e2e_backward") if do_bwd else None
 
     for _ in range(args.iters):
+        if bwd_timer is not None:
+            bwd_timer.begin_iter()
         e2e_fwd.begin()
-        out = moe(hidden_states, probs, stage_timer=stage_timer)
+        out = moe(hidden_states, probs, stage_timer=stage_timer, bwd_timer=bwd_timer)
         e2e_fwd.end()
 
         if do_bwd:
@@ -709,6 +832,7 @@ def _run_one_point(
             e2e_bwd.begin()
             out.backward(grad_out)
             e2e_bwd.end()
+            bwd_timer.end_iter()
             moe.w1.grad = None
             moe.w2.grad = None
             if hidden_states.grad is not None:
@@ -720,9 +844,18 @@ def _run_one_point(
     e2e_ms = {"e2e_forward": e2e_fwd.samples_ms()}
     if do_bwd:
         e2e_ms["e2e_backward"] = e2e_bwd.samples_ms()
+    per_stage_bwd_ms = (
+        bwd_timer.per_stage_ms_samples(e2e_bwd_ms_list=e2e_ms.get("e2e_backward"))
+        if bwd_timer is not None
+        else {n: [] for n in STAGE_NAMES}
+    )
 
     per_stage_mean = {
         n: (statistics.fmean(per_stage_ms[n]) if per_stage_ms[n] else 0.0)
+        for n in STAGE_NAMES
+    }
+    per_stage_bwd_mean = {
+        n: (statistics.fmean(per_stage_bwd_ms[n]) if per_stage_bwd_ms[n] else 0.0)
         for n in STAGE_NAMES
     }
     e2e_fwd_mean = statistics.fmean(e2e_ms["e2e_forward"]) if e2e_ms["e2e_forward"] else 0.0
@@ -740,75 +873,139 @@ def _run_one_point(
     return RunResult(
         num_tokens=num_tokens,
         per_stage_mean_ms=per_stage_mean,
+        per_stage_bwd_mean_ms=per_stage_bwd_mean,
         e2e_forward_mean_ms=e2e_fwd_mean,
         e2e_backward_mean_ms=e2e_bwd_mean,
         raw_per_stage_ms=per_stage_ms,
+        raw_per_stage_bwd_ms=per_stage_bwd_ms,
         raw_e2e_ms=e2e_ms,
     )
 
 
 def _compute_breakdown_row(args, dtype: torch.dtype, r: RunResult) -> dict:
-    """Map per-stage means to the (Time / Compute / GB/s / sort / dispatch /
-    fused_moe / combine / misc / all_kernels) columns from the reference table.
+    """Map per-stage means to the breakdown columns. fc1 / swiglu / fc2 are
+    reported individually (us + TFLOPS) and also summed into fused_moe for
+    back-compat with the original DeepSeek-V3 reference table.
+
+    When the run includes a backward pass, the same columns are emitted for
+    backward as `bwd_*` (per-stage time and per-stage TFLOPS, where backward
+    FLOPs are 2x the forward count for fc1/fc2 — grad_input + grad_weight
+    GEMMs of the same shape — and ~2x for swiglu).
     """
     groups_us = {}
+    groups_bwd_us = {}
     for group, members in STAGE_GROUPS.items():
         groups_us[group] = sum(r.per_stage_mean_ms[m] * 1000.0 for m in members)
+        groups_bwd_us[group] = sum(r.per_stage_bwd_mean_ms.get(m, 0.0) * 1000.0 for m in members)
 
     all_kernels_us = sum(groups_us.values())
+    fused_moe_us = groups_us["fc1"] + groups_us["swiglu"] + groups_us["fc2"]
     time_us = r.e2e_forward_mean_ms * 1000.0
+    bwd_time_us = (r.e2e_backward_mean_ms or 0.0) * 1000.0
+    all_kernels_bwd_us = sum(groups_bwd_us.values())
+    fused_moe_bwd_us = groups_bwd_us["fc1"] + groups_bwd_us["swiglu"] + groups_bwd_us["fc2"]
 
-    # Compute (FC1 + FC2 fwd only): 6 * dispatched_tokens * hidden * ffn FLOPs.
-    dispatched_tokens = r.num_tokens * args.topk  # per rank under force-balance
-    fc_flops_fwd = 6.0 * dispatched_tokens * args.hidden_size * args.moe_ffn_hidden_size
-    compute_tflops = (fc_flops_fwd / (time_us * 1e-6) / 1e12) if time_us > 0 else 0.0
+    H = args.hidden_size
+    F = args.moe_ffn_hidden_size
+    # Per-rank dispatched tokens under force-balance.
+    dispatched_tokens = r.num_tokens * args.topk
 
-    # Global memory traffic estimate (bytes / iter).
-    #   FC1+FC2 weights (loaded each iter, per local expert):
+    # Per-stage forward FLOPs (matrix part only):
+    #   fc1   : (N, H) x (H, 2F) -> (N, 2F)     -> 2 * N * H * 2F  = 4 N H F
+    #   swiglu: (N, 2F) -> (N, F), elementwise  ~ 5 ops/elem * N*F = 5 N F
+    #   fc2   : (N, F) x (F, H)  -> (N, H)      -> 2 * N * F * H   = 2 N H F
+    fc1_flops = 4.0 * dispatched_tokens * H * F
+    swiglu_flops = 5.0 * dispatched_tokens * F
+    fc2_flops = 2.0 * dispatched_tokens * H * F
+    fc_flops_fwd = fc1_flops + fc2_flops  # 6 N H F, matches reference table
+    # Backward FLOPs: grouped GEMMs need grad_input + grad_weight, each of
+    # the same shape as the forward GEMM -> 2x flops per stage.
+    fc1_flops_bwd = 2.0 * fc1_flops
+    fc2_flops_bwd = 2.0 * fc2_flops
+    swiglu_flops_bwd = 2.0 * swiglu_flops
+    fc_flops_bwd = fc1_flops_bwd + fc2_flops_bwd
+
+    def _tflops(flops, us):
+        return (flops / (us * 1e-6) / 1e12) if us > 0 else 0.0
+
+    fc1_tflops = _tflops(fc1_flops, groups_us["fc1"])
+    swiglu_tflops = _tflops(swiglu_flops, groups_us["swiglu"])
+    fc2_tflops = _tflops(fc2_flops, groups_us["fc2"])
+    compute_tflops = _tflops(fc_flops_fwd, time_us)
+    fc1_bwd_tflops = _tflops(fc1_flops_bwd, groups_bwd_us["fc1"])
+    swiglu_bwd_tflops = _tflops(swiglu_flops_bwd, groups_bwd_us["swiglu"])
+    fc2_bwd_tflops = _tflops(fc2_flops_bwd, groups_bwd_us["fc2"])
+    bwd_tflops = _tflops(fc_flops_bwd, bwd_time_us)
+
+    # Global memory traffic estimate (bytes / iter, forward only).
     bytes_per = 2 if dtype in (torch.bfloat16, torch.float16) else 4
     num_local_experts = args.num_experts // dist.get_world_size()
     weight_bytes = (
-        num_local_experts
-        * (
-            args.hidden_size * 2 * args.moe_ffn_hidden_size
-            + args.moe_ffn_hidden_size * args.hidden_size
-        )
-        * bytes_per
+        num_local_experts * (H * 2 * F + F * H) * bytes_per
     )
-    #   FC1+FC2 activations (read once, write once per stage):
     fc_act_bytes = (
-        dispatched_tokens
-        * (args.hidden_size + 2 * args.moe_ffn_hidden_size + args.moe_ffn_hidden_size + args.hidden_size)
-        * bytes_per
+        dispatched_tokens * (H + 2 * F + F + H) * bytes_per
     )
-    #   DeepEP dispatch + combine inter-rank payload (rough):
-    deepep_bytes = 2 * r.num_tokens * args.topk * args.hidden_size * bytes_per
+    deepep_bytes = 2 * r.num_tokens * args.topk * H * bytes_per
     total_bytes = weight_bytes + fc_act_bytes + deepep_bytes
     gbps = (total_bytes / (time_us * 1e-6) / 1e9) if time_us > 0 else 0.0
 
     return {
         "num_tokens": r.num_tokens,
+        # forward columns
         "time_us": time_us,
         "tflops": compute_tflops,
         "gbps": gbps,
         "sort_us": groups_us["sort"],
         "dispatch_us": groups_us["dispatch"],
-        "fused_moe_us": groups_us["fused_moe"],
+        "fc1_us": groups_us["fc1"],
+        "fc1_tflops": fc1_tflops,
+        "swiglu_us": groups_us["swiglu"],
+        "swiglu_tflops": swiglu_tflops,
+        "fc2_us": groups_us["fc2"],
+        "fc2_tflops": fc2_tflops,
+        "fused_moe_us": fused_moe_us,
         "combine_us": groups_us["combine"],
         "misc_us": groups_us["misc"],
         "all_kernels_us": all_kernels_us,
+        # backward columns
+        "bwd_time_us": bwd_time_us,
+        "bwd_tflops": bwd_tflops,
+        "bwd_sort_us": groups_bwd_us["sort"],
+        "bwd_dispatch_us": groups_bwd_us["dispatch"],
+        "bwd_fc1_us": groups_bwd_us["fc1"],
+        "bwd_fc1_tflops": fc1_bwd_tflops,
+        "bwd_swiglu_us": groups_bwd_us["swiglu"],
+        "bwd_swiglu_tflops": swiglu_bwd_tflops,
+        "bwd_fc2_us": groups_bwd_us["fc2"],
+        "bwd_fc2_tflops": fc2_bwd_tflops,
+        "bwd_fused_moe_us": fused_moe_bwd_us,
+        "bwd_combine_us": groups_bwd_us["combine"],
+        "bwd_misc_us": groups_bwd_us["misc"],
+        "bwd_all_kernels_us": all_kernels_bwd_us,
     }
 
 
-def _format_breakdown_table(rows: List[dict], dtype_str: str) -> str:
+def _format_breakdown_table(rows: List[dict], dtype_str: str, *, direction: str = "fwd") -> str:
+    """Format the per-stage breakdown table.
+
+    direction = "fwd": print forward columns
+    direction = "bwd": print backward columns (same layout, bwd_* fields)
+    """
+    assert direction in ("fwd", "bwd")
+    is_bwd = direction == "bwd"
+    title = "backward" if is_bwd else "forward"
+
     header = [
         "Batch Size",
         "Time (us)",
         "Compute (TFLOPS)",
-        "Global Memory (GB/s)",
+        "Global Memory (GB/s)" if not is_bwd else "—",
         "sort (us)",
         "dispatch (us)",
-        "fused_moe (us)",
+        "fc1 (us / TFLOPS)",
+        "swiglu (us / TFLOPS)",
+        "fc2 (us / TFLOPS)",
         "combine (us)",
         "misc (us)",
         "all_kernels (us)",
@@ -820,20 +1017,28 @@ def _format_breakdown_table(rows: List[dict], dtype_str: str) -> str:
             return "-"
         return format(value, spec)
 
+    def _fmt_pair(us, tflops):
+        return f"{_fmt_num(us, '.1f')} / {_fmt_num(tflops, '.1f')}"
+
+    def _g(row, key):
+        return row.get(("bwd_" + key) if is_bwd else key, 0.0)
+
     body = []
     for row in rows:
         body.append(
             [
                 f"{row['num_tokens']}",
-                _fmt_num(row["time_us"], ".1f"),
-                _fmt_num(row["tflops"], ".1f"),
-                _fmt_num(row["gbps"], ".0f"),
-                _fmt_num(row["sort_us"], ".1f"),
-                _fmt_num(row["dispatch_us"], ".1f"),
-                _fmt_num(row["fused_moe_us"], ".1f"),
-                _fmt_num(row["combine_us"], ".1f"),
-                _fmt_num(row["misc_us"], ".1f"),
-                _fmt_num(row["all_kernels_us"], ".1f"),
+                _fmt_num(_g(row, "time_us"), ".1f"),
+                _fmt_num(_g(row, "tflops"), ".1f"),
+                _fmt_num(row["gbps"], ".0f") if not is_bwd else "-",
+                _fmt_num(_g(row, "sort_us"), ".1f"),
+                _fmt_num(_g(row, "dispatch_us"), ".1f"),
+                _fmt_pair(_g(row, "fc1_us"), _g(row, "fc1_tflops")),
+                _fmt_pair(_g(row, "swiglu_us"), _g(row, "swiglu_tflops")),
+                _fmt_pair(_g(row, "fc2_us"), _g(row, "fc2_tflops")),
+                _fmt_num(_g(row, "combine_us"), ".1f"),
+                _fmt_num(_g(row, "misc_us"), ".1f"),
+                _fmt_num(_g(row, "all_kernels_us"), ".1f"),
             ]
         )
 
@@ -846,7 +1051,7 @@ def _format_breakdown_table(rows: List[dict], dtype_str: str) -> str:
             cells.append(c.rjust(w) if align == "right" else c.ljust(w))
         return "| " + " | ".join(cells) + " |"
 
-    lines = [f"\nTurbo MoE forward breakdown (dispatch={dtype_str}, per rank):"]
+    lines = [f"\nTurbo MoE {title} breakdown (dispatch={dtype_str}, per rank):"]
     lines.append(sep)
     lines.append(_fmt(header, align="left"))
     lines.append(sep)
@@ -866,15 +1071,37 @@ def _dump_breakdown_csv(path: str, args, world_size: int, rows: List[dict]):
         "topk",
         "dtype",
         "num_tokens",
+        # forward
         "time_us",
         "tflops",
         "gbps",
         "sort_us",
         "dispatch_us",
+        "fc1_us",
+        "fc1_tflops",
+        "swiglu_us",
+        "swiglu_tflops",
+        "fc2_us",
+        "fc2_tflops",
         "fused_moe_us",
         "combine_us",
         "misc_us",
         "all_kernels_us",
+        # backward
+        "bwd_time_us",
+        "bwd_tflops",
+        "bwd_sort_us",
+        "bwd_dispatch_us",
+        "bwd_fc1_us",
+        "bwd_fc1_tflops",
+        "bwd_swiglu_us",
+        "bwd_swiglu_tflops",
+        "bwd_fc2_us",
+        "bwd_fc2_tflops",
+        "bwd_fused_moe_us",
+        "bwd_combine_us",
+        "bwd_misc_us",
+        "bwd_all_kernels_us",
     ]
     ts = _dt.datetime.utcnow().isoformat(timespec="seconds")
     write_header = not os.path.exists(path)
@@ -961,18 +1188,24 @@ def main():  # noqa: C901 (benchmark glue)
                     f"{type(exc).__name__}: {exc}"
                 )
                 _tb.print_exc()
+            nan = float("nan")
             breakdown_rows.append(
                 {
                     "num_tokens": num_tokens,
-                    "time_us": float("nan"),
-                    "tflops": float("nan"),
-                    "gbps": float("nan"),
-                    "sort_us": float("nan"),
-                    "dispatch_us": float("nan"),
-                    "fused_moe_us": float("nan"),
-                    "combine_us": float("nan"),
-                    "misc_us": float("nan"),
-                    "all_kernels_us": float("nan"),
+                    "time_us": nan, "tflops": nan, "gbps": nan,
+                    "sort_us": nan, "dispatch_us": nan,
+                    "fc1_us": nan, "fc1_tflops": nan,
+                    "swiglu_us": nan, "swiglu_tflops": nan,
+                    "fc2_us": nan, "fc2_tflops": nan,
+                    "fused_moe_us": nan, "combine_us": nan,
+                    "misc_us": nan, "all_kernels_us": nan,
+                    "bwd_time_us": nan, "bwd_tflops": nan,
+                    "bwd_sort_us": nan, "bwd_dispatch_us": nan,
+                    "bwd_fc1_us": nan, "bwd_fc1_tflops": nan,
+                    "bwd_swiglu_us": nan, "bwd_swiglu_tflops": nan,
+                    "bwd_fc2_us": nan, "bwd_fc2_tflops": nan,
+                    "bwd_fused_moe_us": nan, "bwd_combine_us": nan,
+                    "bwd_misc_us": nan, "bwd_all_kernels_us": nan,
                 }
             )
             # Try to keep the process group healthy for the next point.
@@ -1001,7 +1234,9 @@ def main():  # noqa: C901 (benchmark glue)
 
     # ------------------- print breakdown table (rank 0) ---------------------
     if rank == 0:
-        print(_format_breakdown_table(breakdown_rows, args.dtype))
+        print(_format_breakdown_table(breakdown_rows, args.dtype, direction="fwd"))
+        if args.mode == "fwd_bwd":
+            print(_format_breakdown_table(breakdown_rows, args.dtype, direction="bwd"))
         if args.output_csv:
             csv_path = args.output_csv.replace(".csv", "_breakdown.csv") if args.output_csv.endswith(".csv") else args.output_csv + ".breakdown.csv"
             _dump_breakdown_csv(csv_path, args, world_size, breakdown_rows)
