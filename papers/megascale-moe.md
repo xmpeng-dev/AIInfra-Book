@@ -1,368 +1,191 @@
-# MegaScale-MoE: Large-Scale Communication-Efficient Training of MoE Models in Production
+# MegaScale-MoE:生产级大规模 MoE 训练的通信高效系统
+# MegaScale-MoE: Large-Scale Communication-Efficient Training of Mixture-of-Experts Models in Production
 
-> **发表:** EuroSys '26  
-> **机构:** ByteDance  
-> **arXiv:** 待公开 | **场景:** 生产级 MoE 训练系统  
-> **核心贡献:** 万卡规模 MoE 训练的通信效率优化，DeepSeek-V3 量级模型的工业实践
+> **arXiv:** [2505.11432](https://arxiv.org/abs/2505.11432) (v3) · **DOI:** [10.1145/3767295.3769325](https://doi.org/10.1145/3767295.3769325) · **PDF:** https://arxiv.org/pdf/2505.11432
+> **发表:** EuroSys 2026（Edinburgh, Apr 27–30）· **机构:** ByteDance Seed + 北京大学
+> **领域:** MoE 训练 · 通信-计算 overlap · 并行策略 · 通信压缩
+> **核心贡献:** 把每个 MoE 层**约束在单节点内（NVLink）**，用 **SP(attention)+EP(FFN) 通信高效并行 + inter/intra-op comm-compute overlap + 通信压缩**，在 **1440 张 H800** 上训 **352B MoE** 达 **1.41M tokens/s，比 Megatron-LM 快 1.88×**。
 
----
-
-## 1. 核心问题：生产环境下 MoE 训练的通信墙
-
-### 1.1 工业级 MoE 训练的独特挑战
-
-```
-学术环境 vs 生产环境的差距：
-
-学术环境（论文中的实验）：
-  ├─ 64~256 GPUs
-  ├─ 理想网络（InfiniBand 单集群）
-  ├─ 固定拓扑，可精细调优
-  └─ 追求单项指标
-
-生产环境（MegaScale-MoE）：
-  ├─ 10,000+ GPUs（万卡规模）
-  ├─ 异构网络（跨数据中心、混合拓扑）
-  ├─ 硬件故障常态化（每天数十次 GPU 失效）
-  ├─ 训练任务不能中断（在线恢复）
-  └─ 必须同时优化吞吐、稳定性、成本
-```
-
-### 1.2 MoE 的通信放大效应
-
-```
-Dense LLM（以 GPT-175B 为例）：
-  通信 = All-Reduce（梯度同步）
-  通信量 ∝ 参数量 / Data Parallel Degree
-
-MoE LLM（以 DeepSeek-V3 量级为例）：
-  通信 = All-Reduce（梯度）+ All-to-All × 2（Expert Dispatch + Gather）
-  通信量 ∝ batch_tokens × d_model × 2  （每个 MoE 层 2 次 All-to-All）
-
-问题：MoE 层的 All-to-All 通信 = Dense 模型通信量的 3~5 倍
-      在万卡规模下，通信延迟 >> 计算时间
-```
-
-### 1.3 万卡规模的新问题
-
-```
-规模扩大带来的新挑战：
-
-问题 1：All-to-All 路由延迟指数级增长
-  16 GPUs：All-to-All ≈ 5ms
-  1024 GPUs：All-to-All ≈ 25ms
-  10000 GPUs：All-to-All ≈ 60ms+
-  
-  原因：跨节点跳数增加，网络拥塞概率增大
-
-问题 2：Expert 利用率不均导致拖尾效应
-  万卡场景下，某个 GPU 上的 Expert 过载
-  → 整个流水线等待最慢的 GPU
-  → 木桶效应被放大 10x+
-
-问题 3：跨交换机层次的带宽不对称
-  Leaf-to-Leaf（同 Rack）：100 Gbps
-  Leaf-to-Spine（跨 Rack）：25 Gbps
-  跨 Pod 带宽：更低
-  → All-to-All 中大量流量必须走低带宽路径
-
-问题 4：容错与恢复
-  1万 GPU 中，每天预期故障：10~50 次
-  传统方式：从 checkpoint 重启（浪费数小时训练）
-  需要：在线故障检测 + 快速重路由 + 不中断训练
-```
+> **重读修正（2026-07-07）：** 旧版笔记（2026-03-07，arXiv「待公开」时期）基于会议标题**大量脑补**，把本文写成「万卡 + 生产容错 + 拓扑感知路由 + 分层 EP + 42% MFU + <30s 故障恢复 + METIS 图分区伪代码」——**这些都不是本文的贡献**。据 arXiv:2505.11432 v3 全文：本文**不做容错、不做拓扑感知路由、不做分层 EP**；三大真实支柱是 **① 通信高效并行(SP+EP，MoE 层锁在节点内) ② inter/intra-op 通信-计算 overlap ③ 通信压缩(FP32→BF16 / FP8 A2A)**。本页据全文完全重写。
 
 ---
 
-## 2. MegaScale-MoE 系统设计
+## 一、问题分析
 
-### 2.1 总体架构
+### 1.1 研究背景
 
-```
-MegaScale-MoE 四层优化架构：
+- ByteDance 常态化在**数千卡**上训数千亿参数 LLM，边际效率提升即可省大量算力与时间。
+- MoE 靠稀疏激活让 FLOPs 亚线性增长，训练成本比同质量 dense 模型低一个量级 —— 但**系统视角下通信成了关键瓶颈**。
+- **实测：在 Hopper 上训某内部模型，通信占前向 43.6%、占整训练 32%。** 两个成因：① MoE 参数更大 → 需更多 GPU 做模型并行 → 通信更多；② 稀疏计算需要在 fwd/bwd 各加 **2 次 all-to-all**（dispatch + combine）来分发/聚合 token。
+- **硬件趋势加剧失衡**：算力增速远快于带宽（Figure 1），加上低精度训练进一步压缩计算时间 → 通信占比更突出；仅把 TP 扩到多节点，通信占比就常 >50%。
 
-┌─────────────────────────────────────────────────────────┐
-│ Layer 4: 容错层（Fault Tolerance）                        │
-│   在线故障检测 → Expert 重路由 → 训练连续性保证            │
-├─────────────────────────────────────────────────────────┤
-│ Layer 3: 并行策略层（Parallel Strategy）                  │
-│   Heterogeneous Parallel Config（Attn ≠ MoE 并行策略）   │
-│   → 类似 MoE Parallel Folding 但针对万卡做了裁剪          │
-├─────────────────────────────────────────────────────────┤
-│ Layer 2: 通信优化层（Communication）                      │
-│   Topology-aware All-to-All（感知跨 Rack/Pod 带宽差异）   │
-│   Expert 局部性优先调度（减少跨节点 Expert 访问）          │
-├─────────────────────────────────────────────────────────┤
-│ Layer 1: 计算优化层（Computation）                        │
-│   Expert 融合内核（Expert Group GEMM）                    │
-│   激活内存优化（类 MoEBlaze 思路）                         │
-└─────────────────────────────────────────────────────────┘
-```
+### 1.2 问题定义
 
-### 2.2 核心创新 1：拓扑感知的 All-to-All 调度
+**目标：** 在数千卡上高效训练数千亿～万亿参数 MoE，把通信开销压到接近零而不牺牲收敛。
 
-```
-传统 All-to-All（拓扑无感知）：
-  Token 被随机路由到任意 GPU 的 Expert
-  → 大量流量跨 Rack/Pod → 高延迟，拥塞
+**关键洞察（贯穿全文）：** MoE 与 dense 的架构差异是**层内（intra-layer）**的，也是通信开销的主要来源。因此 **MegaScale-MoE 把每个 MoE 层约束在单个节点内**，用高带宽 NVLink，避免既有系统常见的**跨节点 EP**。节点间用 pipeline parallelism 分参数、并 overlap 不同 micro-batch 的通信。
 
-MegaScale-MoE 的拓扑感知路由：
+符号（Table 1）：$b$ micro-batch、$s$ seq、$h$ hidden、$n$ 模型并行度(TP/SP/EP)、$m$ query 头/kv 头之比、$k$ top-k。
 
-  ┌─── Rack 0 ───┐  ┌─── Rack 1 ───┐
-  │ GPU 0  GPU 1 │  │ GPU 4  GPU 5 │
-  │  E0     E1   │  │  E4     E5   │
-  └──────────────┘  └──────────────┘
-  
-  优先级策略：
-    1. 同 GPU 内 Expert（无通信）      → 优先级最高
-    2. 同 Rack 内 Expert（NVLink/IB）  → 高带宽
-    3. 跨 Rack（Leaf-Spine）           → 中等带宽
-    4. 跨 Pod                          → 仅在必要时
+### 1.3 解决方案
 
-  调度算法：
-    1. Gate 路由时，给"本地"Expert 轻微的加权偏好
-       → 不改变模型精度（偏好量极小）
-       → 显著减少跨节点流量
-    
-    2. Expert 初始放置时，将高度相关的 Expert 放在同 Rack
-       → 一次性放置，不需要动态迁移
-       → 比 LAER-MoE 的动态重排更简单，开销更低
-```
+三条支柱：
 
-### 2.3 核心创新 2：分层 Expert 并行
+**支柱一 · 通信高效并行（§3，降通信量）**
+- **Attention 用 SP（DeepSpeed-Ulysses 式序列并行）替代 TP**。TP 需沿关键路径 all-gather / reduce-scatter 激活，通信量 $2bsh(n-1)/n$；SP 降到 $2bsh(n-1)/n\times(2+2/m)/n$，在 NVLink domain=8 时约为 TP 的 **1/4**。SP 复制而非切分 attention 权重，但靠**分层通信**（Figure 5 / Appendix A.1），SP 的参数同步开销与 TP 实测仅差 0.3–3.1%；额外显存仅 +1.2–5.4%（MoE 显存主要被 expert 参数占）。
+  - 也评估过 CP（context parallelism），因 causal mask 负载不均、zigzag 也难完美均衡而放弃。
+- **FFN 用 EP 替代 TP**。TP 切 expert 的 hidden 维伤 GEMM 效率；EP 每卡保留完整 expert 计算。EP 通信 $2k/n\times bsh(n-1)/n$ vs TP $2bsh(n-1)/n$，相对优劣看 $k/n$。**自适应通信模式**：当 top-k > n 时，用 **all-gather + 本地 scatter + reduce-scatter 替代 all-to-all**（ring 式、只与邻居通信，比 A2A 高效；Mixtral-8×7B 上 top-k>6 时 AG 式更快）。用 **自研 CUDA scatter/gather 算子**（预算 token→行映射）替代 `torch.scatter_add/gather`。
+- 负载均衡：辅助 loss + token dropping，按「同 GPU 上的 expert 组」（类 DeepSeek-V2）算 balance loss 与容量。
 
-```
-单级 Expert Parallel（传统）：
-  所有 GPU 参与统一的 All-to-All → 万卡全连接 All-to-All 延迟极高
+**支柱二 · 通信-计算 overlap（§4，把通信藏到接近零）**
+- 把每个 MoE 层的 fwd/bwd **拆成独立的计算/通信算子 GPU kernel**（不依赖 `torch.autograd` 的整块反向），获得细粒度调度自由。
+- **Inter-operator overlap**：手工「holistic scheduling」在不同 CUDA stream 上异步跑，重排算子把通信藏进无依赖计算。配合 **selective activation rematerialization（SAR）**——前向只保留「重算贵」的激活，反向重算/重通信「内存贵」的部分，且把重算 overlap 掉。单 MoE 层激活从 $(2n+2k+3kf+12+5/m)bsh/n$ 降到 $(2kf+4+2/m)bsh/n$，**激活内存 ↓~50% 而不掉速**。
+- **Intra-operator overlap**（关键路径上的通信，如 dispatch 后必须等 token 才能算）：把通信切成 tile、对齐 GPU 计算 pattern、**融进 compute kernel**；用**device memory barrier + tile 级通知**去掉 host 干预。两类 kernel：
+  - Attention：`A2A+GEMM` / `GEMM+A2A`（用专用 copy engine 搬数、全部 SM 留给计算；tile 到达即通知 GEMM 续算；用 **swizzling** 对齐通信 tile 到达节奏与计算节奏；给通信分配**少量 SM**）。
+  - FFN：`AG+scatter+GroupedGEMM` / `GroupedGEMM+gather+RS`。因 GroupedGEMM 需 token shuffle，先按 expert 再按 source rank 排序，**让每个计算 tile 只依赖少数（甚至单个）source rank**，减少等待、避免重复加载 expert 权重。
 
-MegaScale-MoE 的分层 EP（Hierarchical Expert Parallel）：
-
-Layer 1（节点内 EP）：
-  ├─ 8 GPUs within a node 组成 EP 组
-  ├─ 使用 NVLink（高带宽，低延迟）
-  └─ 负责 "热点 Expert"（高访问频率）
-
-Layer 2（节点间 EP）：
-  ├─ 跨节点的 EP 组（16~32 节点）
-  ├─ 使用 InfiniBand
-  └─ 负责 "稀有 Expert"（低访问频率）
-
-效果：
-  热点 Expert 在节点内解决 → NVLink 带宽高，延迟低
-  稀有 Expert 跨节点访问 → 频率低，对延迟不敏感
-  整体通信量大幅下降
-```
-
-### 2.4 核心创新 3：生产级容错机制
-
-```python
-# MegaScale-MoE 容错流程（伪代码）
-
-class MegaScaleFaultTolerance:
-    def __init__(self, cluster):
-        self.cluster = cluster
-        self.expert_placement = ExpertPlacementMap()
-        self.health_monitor = ClusterHealthMonitor()
-    
-    def on_gpu_failure(self, failed_gpu_id):
-        """GPU 故障时的快速恢复"""
-        
-        # Step 1: 检测（< 1 秒）
-        failed_experts = self.expert_placement.get_experts(failed_gpu_id)
-        
-        # Step 2: 重路由（不停止训练）
-        for expert_id in failed_experts:
-            # 找到同 Rack 内负载最低的 GPU
-            backup_gpu = self.find_backup_gpu(
-                expert_id,
-                preference='same_rack',
-                min_memory_gb=16
-            )
-            
-            # 从最近的 checkpoint 恢复该 Expert 参数
-            self.restore_expert_params(
-                expert_id,
-                target_gpu=backup_gpu,
-                source='neighbor_replica'  # 邻近副本，不用从存储读取
-            )
-            
-            # 更新路由表（实时生效）
-            self.expert_placement.update(expert_id, backup_gpu)
-        
-        # Step 3: 训练继续（约 5 秒中断 vs 传统数小时重启）
-        self.cluster.resume_training()
-    
-    def maintain_expert_replicas(self):
-        """维护关键 Expert 的热备份"""
-        for expert_id in self.identify_critical_experts():
-            # 在相邻 GPU 上维护参数副本（不参与计算，仅备用）
-            self.replicate_to_neighbor(expert_id)
-```
+**支柱三 · 通信压缩（§5）**
+- **DP**：BF16 混合精度训练里，梯度同步从 FP32 降到 BF16 —— 但用 **all-to-all 收集分片 + FP32 本地归约**（而非 ring reduce-scatter），避免 BF16 累加的精度损失；配 in-place buffer 防峰值显存增长。梯度通信 **↓50%**，精度损失可忽略。
+- **FP8 训练**：把 TP 的 BF16 reduce-scatter 换成 **FP8 all-to-all**（E4M3）+ FP32 归约；前向 per-token 量化、反向 per-channel + token 维 group（group size 128）量化，保持与 BF16 loss 对齐。
 
 ---
 
-## 3. 性能实验结果
+## 二、实验效果
 
-### 3.1 系统规模与指标
+### 2.1 实验设置
 
-| 指标 | 数值 | 说明 |
-|------|------|------|
-| **GPU 规模** | 10,000+ H800 | 字节跳动生产集群 |
-| **模型规模** | 300B+ MoE | DSv3 量级 |
-| **MFU** | **~42%** | 与 Dense 模型相当 |
-| **故障恢复时间** | **< 30 秒** | vs 传统 2~4 小时 |
-| **All-to-All 延迟** | 减少 **45%** | 拓扑感知路由效果 |
-| **训练效率** | 提升 **35%** | vs 基础 Megatron-LM MoE |
+| 项 | 详情 |
+|---|---|
+| 硬件 | NVIDIA **H800**（989 TFLOPS / 80GB / 3.4TB/s / NVLink 400GB/s）；另测 A100、H20 |
+| Baseline | **Megatron-LM**（commit f1f03922），双方都开 MegaScale 的 DP/PP overlap，PP=15，公平同 global batch |
+| 主模型 | **Internal-352B**（60 层，$h$=4096，32 头，$m$=4，$h_{ffn}$=14336，**32 experts，top-3**），seq=8192，vocab=65536 |
+| 其他模型 | Mixtral-8×7B / 8×22B、Hunyuan-Large、Phi-3.5-MoE、DeepSeekMoE（Table 2） |
+| 配置 | MegaScale-MoE 用节点内 SP+EP；Megatron-LM 用节点内 TP |
 
-> ⚠️ **注：** 具体数字以正式发表版为准，此处基于 EuroSys'26 会议摘要推断
+### 2.2 主要结果
 
-### 3.2 通信优化效果分解
+**强扩展（352B，固定 global batch=720，Table 3）：**
 
-```
-35% 效率提升来源：
+| #GPUs | Megatron-LM 吞吐 (tok/s) | MegaScale-MoE 吞吐 (tok/s) | 加速 |
+|---|---|---|---|
+| 240 | 151.1k | 272.9k | **1.81×** |
+| 480 | 301.1k | 498.6k | 1.65× |
+| 720 | 430.5k | 740.1k | 1.72× |
+| 960 | 550.2k | 963.8k | 1.77× |
+| **1440** | 746.6k | **1407.7k** | **1.88×** |
 
-拓扑感知 All-to-All：    +18%
-分层 Expert Parallel：   +12%
-Expert 融合内核：         +5%
-容错机制开销：             -2%（负项）
-总计：约 33% 净提升
-```
+- 训 1T tokens 的时间：1440 卡从 Megatron 的 15.50 天降到 **8.22 天**。
+- MegaScale-MoE 的 MFU 随卡数从 32.48% 降到 27.89%（固定 batch → micro-batch 变少 → pipeline bubble 增多，属预期）。
 
-### 3.3 故障注入实验
+**弱扩展（batch 随卡数 480→1440 从 360→1080）：** 加速 **1.74–1.79×**；MegaScale-MoE 近线性（吞吐仅降 0.2%），Megatron 降 2.74%。
 
-```
-模拟 1 GPU 故障（1 万卡集群中的 1/10000）：
+**跨 GPU（Mixtral-8×7B，32 卡 H800/H20/A100）：** MFU 最高 **1.58×** 优于 Megatron；attention+GroupedGEMM 仅占一层约 1/3 时间，其余是通信与其他算子。
 
-传统 checkpoint 重启：中断 2~4 小时
-MegaScale-MoE 热恢复：
-  故障检测：1 秒
-  Expert 重路由：5 秒
-  训练恢复：约 25 秒
-  总计：< 30 秒中断
-  
-节省时间：99.8%
-```
+### 2.3 消融
 
----
+**系统性拆解（352B，240 卡，batch 720，Table 5）：**
 
-## 4. 与其他论文的对比
+| 配置 | 归一化吞吐 | 增量 |
+|---|---|---|
+| baseline（TP for attn+FFN，无 overlap） | 1.00 | — |
+| + SP+EP 通信高效并行 | 1.13 | **+13%** |
+| + inter-operator overlap | 1.22 | **+9%** |
+| + intra-operator overlap | 1.28 | **+6%** |
 
-### 4.1 在系统层次中的定位
-
-```
-MoE 训练系统优化层次（从底向上）：
-
-┌────────────────────────────────────────────────────────┐
-│ 生产系统层  MegaScale-MoE ← 这里                        │
-│   容错 + 万卡通信 + 分层 EP + 运维                       │
-├────────────────────────────────────────────────────────┤
-│ 并行策略层  MoE Parallel Folding                         │
-│   5D 并行、Attn/MoE 解耦                                │
-├────────────────────────────────────────────────────────┤
-│ 负载均衡层  LAER-MoE, SwiftMoE                           │
-│   FSEP 重排、参数解耦                                    │
-├────────────────────────────────────────────────────────┤
-│ 内存优化层  MoEBlaze, MemFine                            │
-│   激活压缩、分块调度                                     │
-└────────────────────────────────────────────────────────┘
-```
-
-### 4.2 关键差异对比
-
-| 维度 | MegaScale-MoE | LAER-MoE | MoE Parallel Folding |
-|------|-------------|---------|---------------------|
-| **规模** | **10,000 GPUs** | 256 GPUs | 1024 GPUs |
-| **容错** | ✅ 生产级 | ❌ 不涉及 | ❌ 不涉及 |
-| **通信优化** | 拓扑感知路由 | FSEP 重排 | Fold/Unfold |
-| **实施成本** | 高（工程密集） | 中高 | 很高（重写框架） |
-| **框架依赖** | 自研系统 | Hetu-Galvatron | Megatron-Core |
+**逐组件：**
+- **并行策略**：SP+EP 比 TP+TP 高 **14.9–32.9% MFU**（跨 7 个模型）；SP 额外显存仅 1.2–5.4%；SP vs TP 参数同步时间仅差 0.3–3.1%。
+- **intra-op overlap**：通信+计算合计时间降 **1.2–4.7×**；训练迭代时间降 **7.1–12.9%**。
+- **SAR**：Mixtral-8×7B/8×22B 激活内存分别 ↓45.5%/57.2%，整体显存 ↓21.3%/35%，性能差异 <0.5%。
+- **DP 通信压缩**：BF16 A2A + FP32 归约的 loss 曲线与 FP32 reduce-scatter 几乎重合。
+- **收敛**：35B 从头训 + 176B 续训，BF16 与 FP8 loss 均稳定一致。
 
 ---
 
-## 5. 对 AI Infra 工程师的启示
+## 三、业界类似方案
 
-### 5.1 万卡 MoE 训练的设计原则
+### 3.1 方案对比
 
-1. **拓扑感知优先于算法优化**
-   - 在万卡规模，网络拓扑是最大瓶颈
-   - Expert 放置策略应感知 Rack/Pod 层次结构
+| 方案 | 核心思路 | 与本文关系 |
+|---|---|---|
+| **Megatron-LM** | 3D 并行（TP/PP/DP），节点内 TP | baseline；本文构建其上 |
+| **DeepSpeed-MoE** | 分层 all-to-all + 压缩，训练+推理 | 早期 MoE 系统，跨节点 EP |
+| **Tutel** | 运行时自适应并行 + 分层 A2A | 动态切换在数千亿参数下 overhead 大 |
+| **DeepSeek-V3（DeepEP+DualPipe）** | DeepEP 跨节点 A2A（限 4 节点）+ DualPipe overlap | 最强对照，见 §3.3 |
+| **COMET**（[`./comet.md`](./comet.md)） | 单融合 kernel 内 tile 级 overlap（同团队 intra-op 手法同源） | 本文 intra-op overlap 引用其 swizzling/tile barrier |
+| **MegaScale-MoE**（本文） | MoE 层锁节点内 + SP+EP + inter/intra-op overlap + 压缩 | 生产级 1.88× |
 
-2. **分层通信替代全局通信**
-   - 节点内（NVLink）+ 节点间（IB）分层设计
-   - 热点数据尽量在节点内解决
+### 3.2 技术路线对比
 
-3. **容错是生产必须品，不是可选项**
-   - 万卡规模下故障是常态（每天 10+ 次）
-   - 需要热备份和快速路由切换
+- **路线 A：跨节点 EP + 限制路由**（DeepSeek-V3 DeepEP）——DeepEP 因跨节点 IB 带宽低，把 token dispatch 限最多 4 节点以保持跨节点通信量恒定，**牺牲路由灵活性**。
+- **路线 B：MoE 层锁节点内 + 分层 PP**（本文）——每层在 NVLink 域内，**可路由到任意 top-k expert**，无跨节点 token dispatch。
+- **overlap 手法**：DualPipe 用跨 micro-batch 的 PP overlap，需存 **2× 参数**；MegaScale-MoE 的 overlap 发生在**单个 micro-batch 的 fwd/bwd 内**，**无额外显存**，且不依赖 PP。
 
-### 5.2 从 MegaScale-MoE 移植到自有系统
+### 3.3 本文定位
 
-```python
-# 关键可移植设计模式
+- **相对 Megatron-LM**：SP 替 TP（attention 通信 ↓~4×）、EP 替 TP（不伤 GEMM 效率）、加 inter/intra-op overlap + 压缩 → 1.88×。
+- **相对 DeepSeek-V3**：不限路由（intra-node 任意 top-k）、overlap 无 2× 参数代价。
+- **独特贡献**：把「MoE 差异是层内」这一洞察落成「MoE 层锁节点内」的系统设计；给出 **scale-up 判据 $R\approx\frac{3}{2}h_{ffn}\times\frac{bandwidth}{peak}$**（>1 即可 overlap，且与 expert 数/top-k/hidden/并行度/输入无关，只由 expert 中间维、算力峰值、带宽决定）。
 
-# 1. 拓扑感知 Expert 放置
-class TopologyAwareExpertPlacer:
-    def place_experts(self, experts, cluster_topology):
-        # 将访问模式相关的 experts 放在同 rack
-        affinity_graph = build_expert_affinity(training_data_sample)
-        
-        # 用图分区算法（如 METIS）做放置
-        placement = graph_partition(
-            affinity_graph,
-            partition_sizes=rack_sizes(cluster_topology),
-            objective='minimize_cross_rack_traffic'
-        )
-        return placement
+### 3.4 推荐进一步阅读
 
-# 2. 分层 EP 通信组管理
-def create_hierarchical_ep_groups(world_size, node_size=8):
-    # 节点内 EP 组（NVLink）
-    intra_node_groups = [
-        list(range(i*node_size, (i+1)*node_size))
-        for i in range(world_size // node_size)
-    ]
-    
-    # 节点间 EP 组（IB）
-    inter_node_groups = [
-        list(range(i, world_size, node_size))
-        for i in range(node_size)
-    ]
-    
-    return intra_node_groups, inter_node_groups
-```
+| 论文 | 理由 |
+|---|---|
+| COMET（MLSys'25，[`./comet.md`](./comet.md)） | 同团队 intra-op 融合 overlap 的单 kernel 版，方法同源 |
+| MegaScale（NSDI'24） | 同团队 dense LLM 万卡训练前作，DP/PP overlap 基础 |
+| DeepSeek-V3 技术报告 | DeepEP + DualPipe 的对照路线 |
+| FLUX / TileLink（同团队） | intra-op 融合 kernel 的底层原语 |
 
 ---
 
-## 6. 横向对比总结
+## 四、关键章节精译（摘要 + scale-up 判据）
 
-| 论文 | 规模 | 核心问题 | 关键技术 | 实现难度 | 落地难度 |
-|------|------|---------|---------|---------|---------|
-| **MegaScale-MoE** (本文) | **万卡** | 生产通信+容错 | 拓扑路由+分层EP | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
-| **MoE Parallel Folding** | 千卡 | 并行策略冲突 | 5D 并行 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
-| **LAER-MoE** | 百卡 | 负载不均 | FSEP 重排 | ⭐⭐⭐⭐ | ⭐⭐⭐ |
-| **MoEBlaze** | 单机 | 内存墙 | Kernel+数据结构 | ⭐⭐ | ⭐⭐ |
+**摘要。** 我们提出 MegaScale-MoE，一个为大规模 MoE 模型高效训练量身打造的生产系统。MoE 是把 LLM 扩到空前规模、提升模型性能的有力架构，但既有 MoE 训练系统随模型规模上升与硬件演进而效率退化。认识到高效通信在 MoE 训练中的关键作用，MegaScale-MoE 为每个 MoE 层的 attention 与 FFN 定制通信高效并行策略，并在 **inter- 与 intra-operator 两个层面**整体性地 overlap 通信与计算；此外用**调整通信模式后的低精度通信压缩**进一步提效。在 1440 张 NVIDIA Hopper GPU 上训练 352B MoE 模型时，吞吐达 **1.41M tokens/s，比 Megatron-LM 提效 1.88×**。
 
----
+**§7 scale-up 判据。** 对含 MoE 的 SwiGLU 结构，计算/通信时间比
+$$R=\frac{\text{comp\_time}}{\text{comm\_time}}\approx\frac{3}{2}\times h_{ffn}\times\frac{bandwidth}{peak}.$$
+要 overlap 有效须 $R>1$。两点洞察：① $R$ 与 expert 数、top-k、hidden、并行度、输入大小**都无关**，算法参数选择灵活；② $R$ 只由 **expert 中间维、算力峰值、通信带宽**决定 —— 固定硬件下只要 expert 维足够大，就能在保持训练效率的前提下扩大 MoE。
 
-## 7. 阅读建议
-
-| 章节 | 核心内容 | 价值 |
-|------|---------|------|
-| **§1 Introduction** | 万卡 MoE 训练的独特挑战 | ⭐⭐⭐⭐⭐ |
-| **§2 System Design** | 拓扑感知路由 + 分层 EP | ⭐⭐⭐⭐⭐ |
-| **§3 Fault Tolerance** | 生产容错机制 | ⭐⭐⭐⭐⭐ |
-| **§4 Evaluation** | 万卡实验数据（稀缺！） | ⭐⭐⭐⭐⭐ |
-| **§5 Lessons Learned** | 工业生产经验 | ⭐⭐⭐⭐⭐ |
+**§7 经验。** 已部署于生产，承担公司大部分大规模 MoE 训练；支持万亿参数、单任务 >10000 GPU、跑数月（Figure 20：200B 总参/20B 激活的真实生产任务，>1万卡、多万亿 token、loss 稳定收敛）。FP8：SwiGLU 扩大数值范围 → 用 per-token 量化、并把 gating 权重乘法挪到 FC2 输出之后减小量化误差；多精度 optimizer 直接以 FP8 存参数、FP32 存 main 参数，省显存并把 DP 的参数 all-gather 通信减半。
 
 ---
 
-## 延伸阅读
+## 五、局限与复现清单
 
-- 📄 **MoE Parallel Folding** - 并行策略基础 → https://arxiv.org/abs/2504.14960
-- 📄 **LAER-MoE** - 负载均衡互补 → https://arxiv.org/abs/2602.11686
-- 📄 **MegaScale（Dense LLM 版）** - 同团队前作 → https://arxiv.org/abs/2402.15627
-- 🔧 **Megatron-LM** - 训练框架基础 → https://github.com/NVIDIA/Megatron-LM
+**局限：**
+- **依赖高带宽节点内 NVLink**：核心前提是「MoE 层锁节点内」；一旦 expert 并行必须跨出 NVLink 域到 RDMA 级带宽，$R>1$ 能否维持是公开问题（§7 自述）。
+- **holistic scheduling 靠手工**：算子执行序、comm/comp 并发度、给通信分几个 SM 都是人工调；自动化留作 future work。
+- **MoE 计算算子仍是 straggler 源**：GroupedGEMM 的 `cuFuncSetAttribute` 资源控制引入同步延迟；动态形状张量致显存碎片；gating 的众多小算子受 CPU jitter 影响造成 pipeline bubble。
+- 代码未开源（生产系统）。
+
+**复现清单：**
+- [ ] 代码开源：**否**（ByteDance 生产系统）
+- [ ] 模型配置：Table 2 给全（可在开源 Mixtral 等上复现思路）
+- [ ] 硬件：H800/H20/A100 均测；核心收益依赖 NVLink 域
+- [ ] 关键实现：SP+EP 并行、inter/intra-op overlap kernel（A2A+GEMM 等）、device-memory barrier、通信压缩
 
 ---
 
-*笔记整理于 2026-03-07，基于 EuroSys'26 会议信息及相关资料*
+## 六、对 monolith-moe / rocmoe 的启示（Our take）
+
+MegaScale-MoE 是我们 super-kernel 在**「host/collective/op 级 overlap」维度上的最强生产级对照**。它证明 comm-compute overlap 在生产里能稳拿 1.88×，也给了我们几把可直接搬的尺子。
+
+| MegaScale-MoE 的招 | 我们的对应（monolith-moe / rocmoe） | 关系 |
+|---|---|---|
+| **intra-op：A2A+GEMM / GroupedGEMM+gather+RS 融进 compute kernel** | 我们把整个前向 5 phase 融成一个 persistent super-kernel | 同类思想；他们半层一 kernel + device barrier，我们整层一 kernel + scoreboard |
+| **device-memory barrier + tile 级通知，去 host 干预** | 64-bit `block_ready` 位图 + receiver-pull | 收敛结论一致：tile/block 级就绪信号、无 host 介入 |
+| **给通信分少量 SM、swizzling 对齐到达节奏** | `comm_ratio`（分 CU 给 scatter）+ XOR swizzle | 直接对应；他们的「comm SM 数调到 comm≈comp latency」= 我们 comm_ratio 甜点 |
+| **按 source rank 排序让 tile 只依赖少数 rank** | receiver-pull：block 就绪即算 | 同源，都把「等全部 token」降成「等这个 tile 的 token」 |
+| **SP 替 TP（attention 通信 ↓4×）** | 我们目前不动 attention（EP8 MoE 层） | 正交；若做 attention 可借 |
+| **通信压缩 FP32→BF16 / FP8 A2A** | backlog：FP8/mxfp8 weights | 同类正交杠杆，砍通信/HBM 流量 |
+| **SAR：只存重算贵的激活，overlap 掉重算** | Phase 2.1 SwiGLU pre-compute + decomposed backward | 思想一致 |
+
+**三条最有用的结论：**
+1. **scale-up 判据 $R\approx\frac{3}{2}h_{ffn}\times\frac{bandwidth}{peak}$ 可直接套 MI355X**：拿 XGMI 带宽 + MI355X BF16/FP8 peak + DSV3 $h_{ffn}$ 代入，能先验判断我们 super-kernel 在给定 shape 下 overlap 到底有没有净收益上限——这正是我们「512 t/g 赢、2048/8192 t/g 输」现象的一个理论解释器，值得算一遍写进 rocmoe README。
+2. **「MoE 层锁节点内」是他们的前提，也正是我们的现状**：我们本就在单节点 8×MI355X / XGMI 上做，等于站在他们认为最优的通信域里；差异化在于我们把 op 级 overlap 再推进到 **in-kernel chunk 级**（他们 intra-op 已经很接近，但仍是「半层一 kernel + copy engine」，不是整前向一个 persistent kernel）。
+3. **他们的 1.88× 是 op/collective 级 overlap 的生产上限参照**：我们要证明 in-kernel 融合能在 AMD/XGMI 上超过这个「op 级」天花板，否则不如直接移植 MegaScale-MoE 式方案。这条要写进项目的价值主张。
+
+> 相关笔记：[`../notes/monolith-moe/README.md`](../notes/monolith-moe/README.md)（super-kernel 调优时间线、comm_ratio / launch_bounds CU 隔离 / XOR swizzle）、[`./comet.md`](./comet.md)（同团队 intra-op 融合 kernel）。
+
+---
+
+*据 arXiv:2505.11432 v3 全文完全重写于 2026-07-07（原脑补版笔记 2026-03-07 已作废）。HTML 版：[`megascale-moe.html`](./megascale-moe.html)。*

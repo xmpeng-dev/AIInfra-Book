@@ -1,0 +1,116 @@
+<!doctype html>
+<!-- Standalone Chinese reading report for arXiv:2604.19241 (UniEP). Source: slab/papers/uniep/README.md. Self-contained. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UniEP — MoE MegaKernel 训练 论文阅读报告</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fff; --text-primary:#0a0a0a; --text-secondary:#4a4a4a; --text-tertiary:#7a7a7a; --fill-primary:#f5f5f5; --fill-secondary:#ebebeb; --fill-tertiary:#fafafa; --stroke-secondary:#e1e1e1; --stroke-tertiary:#ececec; --accent:#2563eb; --accent2:#c2410c; --success-bg:#ecfdf5; --warning-bg:#fffbeb; --info-bg:#ecfeff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0e0e10; --text-primary:#f4f4f6; --text-secondary:#b4b4be; --text-tertiary:#80808c; --fill-primary:#1c1c20; --fill-secondary:#232328; --fill-tertiary:#18181b; --stroke-secondary:#28282d; --stroke-tertiary:#1f1f23; --accent:#6ea4ff; --accent2:#fb923c; --success-bg:#062618; --warning-bg:#2a1c08; --info-bg:#082630; } }
+  * { box-sizing:border-box; }
+  html,body { margin:0; padding:0; background:var(--bg); color:var(--text-primary); font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"PingFang SC","Noto Sans SC","Helvetica Neue",Arial,sans-serif; }
+  body { max-width:860px; margin:0 auto; padding:40px 24px 80px; }
+  h1 { font-size:26px; font-weight:650; margin:0 0 12px; letter-spacing:-0.02em; line-height:1.25; }
+  h2 { font-size:19px; font-weight:600; margin:36px 0 12px; padding-top:8px; border-top:1px solid var(--stroke-tertiary); }
+  h2:first-of-type { border-top:none; margin-top:28px; }
+  h3 { font-size:15px; font-weight:600; margin:20px 0 8px; }
+  p { margin:0 0 12px; }
+  .meta { font-size:13px; color:var(--text-secondary); padding:14px 16px; border-radius:8px; background:var(--fill-tertiary); border:1px solid var(--stroke-secondary); margin-bottom:24px; }
+  .meta a { color:var(--accent); }
+  .tldr { padding:16px 18px; border-radius:8px; background:var(--info-bg); border-left:4px solid var(--accent); margin-bottom:18px; }
+  .tldr strong { display:block; margin-bottom:6px; font-size:13px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-secondary); }
+  .correction { padding:14px 16px; border-radius:8px; background:var(--warning-bg); border-left:4px solid var(--accent2); margin-bottom:24px; font-size:13.5px; }
+  .correction strong { color:var(--accent2); }
+  ul { margin:0 0 14px; padding-left:1.25em; } li { margin-bottom:6px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin:12px 0 18px; }
+  th,td { border:1px solid var(--stroke-secondary); padding:8px 10px; text-align:left; vertical-align:top; }
+  th { background:var(--fill-secondary); font-weight:600; }
+  code,pre { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
+  code { padding:1px 5px; background:var(--fill-secondary); border-radius:3px; }
+  pre { background:var(--fill-primary); border:1px solid var(--stroke-secondary); border-radius:6px; padding:12px 14px; overflow-x:auto; line-height:1.45; margin:12px 0 16px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:4px; margin-right:6px; background:var(--fill-secondary); color:var(--text-secondary); }
+  .highlight { background:var(--success-bg); padding:2px 4px; border-radius:3px; }
+  .col-a { color:var(--accent); font-weight:600; }
+  .footnote { font-size:12px; color:var(--text-tertiary); margin-top:40px; }
+  @media print { body { max-width:none; padding:16px; } h2 { break-after:avoid; } table { font-size:11px; } }
+</style>
+</head>
+<body>
+
+<h1>UniEP:统一专家并行的 MoE MegaKernel 训练系统</h1>
+
+<div class="meta">
+  <span class="tag">arXiv 2026-04</span>
+  <span class="tag">ByteDance Seed</span>
+  <span class="tag">清华</span>
+  <span class="tag">Hopper</span>
+  <span class="tag">开源 Triton-distributed</span><br><br>
+  <strong>论文:</strong> <a href="https://arxiv.org/abs/2604.19241">arXiv:2604.19241</a>
+  &middot; <a href="https://github.com/ByteDance-Seed/Triton-distributed">代码</a><br>
+  <strong>英文题名:</strong> UniEP: Unified Expert-Parallel MoE MegaKernel for LLM Training<br>
+  <strong>笔记路径:</strong> <code>slab/papers/uniep/README.md</code>
+</div>
+
+<div class="tldr">
+  <strong>TL;DR</strong>
+  首次把 <strong>MegaKernel</strong> 用到 MoE 训练:把 Dispatch+GroupGEMM 与 GroupGEMM+Combine 各融成一个持久化单 kernel(1 threadblock / SM),SM 动态分 <strong>Comm/Comp/Relay</strong> 三角色、token 级 <strong>scoreboard</strong> 同步、单 CUDA stream 内 overlap;靠<strong>确定性 token 映射(AllGather 计数 + rank 维 prefix-sum 全局 offset)保 bit-wise 与串行一致</strong>。Relay 做 rank 内 multicast 省 ~34% 流量,10^5 空间解析 autotuner(C++ 144ms)。vs COMET <span class="highlight">1.03–1.38×</span> 端到端 / kernel 级最高 18.4× vs 非重叠。
+</div>
+
+<div class="correction">
+  <strong>⭐ 与本项目最紧密的一篇。</strong> UniEP 基本是 Hopper 侧版本的 RocMoE-v2 super-kernel:MegaKernel + SM 角色分配 + 片上 scoreboard + 单 stream + 确定性排序,逐条能对上我们的设计(见最后一节)。
+</div>
+
+<h2>1. 问题</h2>
+<p>MoE 的 dispatch+expert+combine 吃掉训练 30%–80% 时间。现有 overlap 两大缺陷:① 多流粗粒度 overlap 需 host 同步 + 产生 bubble,且<strong>切 micro-batch 改变反向累加顺序 → 破坏 bit-wise 可复现</strong>;② 缺统一通信原语(top-k 大用 AllGather、稀疏用 AllToAll),逼开发者维护多套 kernel。</p>
+
+<h2>2. 核心方法</h2>
+<ul>
+  <li><strong>持久化 worker + 三角色:</strong> 线程块数 = SM 数常驻;Comm(putmem push)/Comp(padding-free GroupGEMM)/Relay(信号 + rank 内 multicast)。<strong>动态角色</strong>:全局 atomic 任务队列,SM 取任务定角色,初始全通信、数据到齐转计算,天然均衡。</li>
+  <li><strong>确定性 token 映射(保 bit-wise):</strong> 用 AllGather 的每-rank-每-expert 计数 + 沿 rank 维 exclusive prefix-sum 算全局写偏移,叠本地 stable-sort → 无锁无冲突唯一地址,token 到达顺序固定 → 反向 Transposed GroupGEMM 累加树不变。</li>
+  <li><strong>Scoreboard:</strong> <code>[S_token | S_tile]</code>,Relay 攒够一 tile 置位,Comp 就绪即算,<code>ld_acquire/st_release</code> 保序。</li>
+  <li><strong>Relay multicast:</strong> 一 token 多 expert 落同 rank 只传一次 + 本地复制,Top-8/8GPU → 平均 5.25 unique rank,−34% 流量。</li>
+  <li><strong>AutoTuner:</strong> 10^5 配置(N_disp/N_comb/N_relay/N_red/warps),解析 roofline 模型,C++ 144ms + 分桶缓存;预测误差均值 3.8%。</li>
+</ul>
+
+<h2>3. 主要实验(2 Hopper 集群,vs Serial=DeepEP+TE 与 COMET)</h2>
+<table>
+  <thead><tr><th>维度</th><th>结果</th></tr></thead>
+  <tbody>
+    <tr><td>Dispatch+GroupGEMM kernel</td><td>vs Serial 8k <strong>18.4×</strong>;vs COMET 1.30–1.57×</td></tr>
+    <tr><td>层级 fwd</td><td>vs Serial 11.98×;vs COMET 1.08–1.22×(seqlen 越长优势越大)</td></tr>
+    <tr><td><strong>数值精度</strong></td><td><strong>UniEP max_diff=0(bit-wise 一致)</strong>;COMET 高达 0.25 / 22–29% 元素不一致</td></tr>
+    <tr><td>端到端(128 GPU,512k seqlen)</td><td>127→<strong>138 B tokens/day = 1.09×</strong>,且 bit-wise 可复现</td></tr>
+    <tr><td>消融</td><td>Relay 带宽 1.06–1.36× × autotune 1.15–1.68× → 全系统 vs COMET <strong>1.24–1.73×</strong></td></tr>
+  </tbody>
+</table>
+
+<h2>4. 与 monolith-moe / rocmoe 的对照(重点)</h2>
+<p>目前和 RocMoE-v2 super-kernel <strong>最同源</strong>的一篇,几乎逐条对得上:</p>
+<table>
+  <thead><tr><th>UniEP</th><th class="col-a">我们</th><th>关系</th></tr></thead>
+  <tbody>
+    <tr><td>持久化 worker + <strong>动态</strong> Comm/Comp/Relay 角色</td><td>super-kernel + <code>comm_ratio</code> + <code>__launch_bounds__(_,1)</code> 隔离 CU</td><td>同源;他们动态分角色,我们 build-time <code>kSubWGs</code> 静态 → ⭐ 可动态化</td></tr>
+    <tr><td><strong>确定性 token 映射(prefix-sum 全局 offset)保 bit-wise</strong></td><td>counting-sort + <code>atomicAdd</code> 写 <code>pack_perm</code>(非确定序)</td><td>⭐⭐ <strong>最该借鉴</strong>:正好解掉 backward 与 <code>pack_perm</code> 的强耦合</td></tr>
+    <tr><td>token 级 scoreboard + release/acquire</td><td>64-bit <code>block_ready</code> 位图</td><td>收敛一致</td></tr>
+    <tr><td>Relay intra-rank multicast(−34% 流量)</td><td>暂无</td><td>⭐ 新点:DSV3 top_k=8/EP8 同样可省 XGMI</td></tr>
+    <tr><td>push(putmem) &gt; get 实测</td><td>receiver-pull(比 push 慢 ~43%,靠 overlap 藏)</td><td>⚠️ 反向结论,值得在 MI355X XGMI 复测 pull vs push</td></tr>
+  </tbody>
+</table>
+<h3>三条最有用的结论</h3>
+<ul>
+  <li><strong>确定性 token 映射</strong>是我们 backward <code>pack_perm</code> 耦合的现成解:AllGather 计数 + rank prefix-sum 得确定 offset,替掉非确定 <code>atomicAdd</code>。列为 rocmoe 高优先级实验。</li>
+  <li><strong>动态 SM 角色 + 解析 autotuner</strong> 比 build-time <code>kSubWGs</code> 更能吸收 skew(hot_cov50 下 dispatch 变 critical path)。</li>
+  <li><strong>Relay multicast</strong> 是正交省流量招;UniEP 已开源 Triton 实现且<strong>明确可移植 AMD</strong>,可直接读 Triton-distributed 代码对照。</li>
+</ul>
+
+<h2>5. 局限</h2>
+<ul>
+  <li>Triton 实现,最新架构上可能弱于手写 CUDA(称可重写 CUDA 补齐);未用 TMA;评测限单节点 8 GPU。</li>
+  <li>代码开源(~21k 行 Python),作者称可移植 AMD。</li>
+</ul>
+
+<p class="footnote">本页由 <code>slab/papers/uniep/README.md</code> 导出 · arXiv:2604.19241 · 仅供内部阅读</p>
+
+</body>
+</html>

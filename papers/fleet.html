@@ -1,0 +1,227 @@
+<!doctype html>
+<!--
+  Standalone Chinese reading report for arXiv:2604.15379 (Fleet).
+  Source: slab/papers/fleet.md. Self-contained: no external assets.
+  Open in any browser; Ctrl+P → Save as PDF.
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fleet — 多芯粒 GPU Megakernel 论文阅读报告</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --text-primary: #0a0a0a;
+    --text-secondary: #4a4a4a;
+    --text-tertiary: #7a7a7a;
+    --fill-primary: #f5f5f5;
+    --fill-secondary: #ebebeb;
+    --fill-tertiary: #fafafa;
+    --stroke-secondary: #e1e1e1;
+    --stroke-tertiary: #ececec;
+    --accent: #2563eb;
+    --success-bg: #ecfdf5;
+    --warning-bg: #fffbeb;
+    --info-bg: #ecfeff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e0e10;
+      --text-primary: #f4f4f6;
+      --text-secondary: #b4b4be;
+      --text-tertiary: #80808c;
+      --fill-primary: #1c1c20;
+      --fill-secondary: #232328;
+      --fill-tertiary: #18181b;
+      --stroke-secondary: #28282d;
+      --stroke-tertiary: #1f1f23;
+      --accent: #6ea4ff;
+      --success-bg: #062618;
+      --warning-bg: #2a1c08;
+      --info-bg: #082630;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--text-primary);
+    font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+          "PingFang SC", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
+  }
+  body { max-width: 820px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 26px; font-weight: 650; margin: 0 0 12px; letter-spacing: -0.02em; line-height: 1.25; }
+  h2 { font-size: 19px; font-weight: 600; margin: 36px 0 12px; padding-top: 8px; border-top: 1px solid var(--stroke-tertiary); }
+  h2:first-of-type { border-top: none; margin-top: 28px; }
+  h3 { font-size: 15px; font-weight: 600; margin: 20px 0 8px; }
+  p { margin: 0 0 12px; }
+  .meta {
+    font-size: 13px; color: var(--text-secondary);
+    padding: 14px 16px; border-radius: 8px;
+    background: var(--fill-tertiary); border: 1px solid var(--stroke-secondary);
+    margin-bottom: 24px;
+  }
+  .meta a { color: var(--accent); }
+  .tldr {
+    padding: 16px 18px; border-radius: 8px;
+    background: var(--info-bg); border-left: 4px solid var(--accent);
+    margin-bottom: 24px;
+  }
+  .tldr strong { display: block; margin-bottom: 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); }
+  ul { margin: 0 0 14px; padding-left: 1.25em; }
+  li { margin-bottom: 6px; }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+    margin: 12px 0 18px;
+  }
+  th, td {
+    border: 1px solid var(--stroke-secondary);
+    padding: 8px 10px; text-align: left; vertical-align: top;
+  }
+  th { background: var(--fill-secondary); font-weight: 600; }
+  code, pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+  }
+  code {
+    padding: 1px 5px; background: var(--fill-secondary); border-radius: 3px;
+  }
+  pre {
+    background: var(--fill-primary); border: 1px solid var(--stroke-secondary);
+    border-radius: 6px; padding: 12px 14px; overflow-x: auto;
+    line-height: 1.45; margin: 12px 0 16px;
+  }
+  .tag {
+    display: inline-block; font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 4px; margin-right: 6px;
+    background: var(--fill-secondary); color: var(--text-secondary);
+  }
+  .highlight { background: var(--success-bg); padding: 2px 4px; border-radius: 3px; }
+  .footnote { font-size: 12px; color: var(--text-tertiary); margin-top: 40px; }
+  @media print {
+    body { max-width: none; padding: 16px; }
+    h2 { break-after: avoid; }
+    table { font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Fleet: 面向多芯粒 GPU 的分层任务抽象与 Megakernel</h1>
+
+<div class="meta">
+  <span class="tag">arXiv</span>
+  <span class="tag">AMD Research</span>
+  <span class="tag">MI350X</span>
+  <span class="tag">LLM Decode</span><br><br>
+  <strong>论文:</strong>
+  <a href="https://arxiv.org/abs/2604.15379">arXiv:2604.15379</a>
+  &middot;
+  <a href="https://arxiv.org/pdf/2604.15379">PDF</a><br>
+  <strong>英文题名:</strong> Fleet: Hierarchical Task-based Abstraction for Megakernels on Multi-Die GPUs<br>
+  <strong>笔记路径:</strong> <code>slab/papers/fleet.md</code>
+</div>
+
+<div class="tldr">
+  <strong>TL;DR</strong>
+  Chiplet GPU 把 L2 切成 8 份，但 HIP 仍按「整卡统一 L2」编程，导致 LLM decode 权重在 XCD 间重复进 HBM。
+  Fleet 新增 <strong>Chiplet-task</strong>（绑定一个 XCD + 协作读权重），在 Mirage 式 persistent megakernel 里用 per-chiplet 调度与 M-major tiling 抬高 L2 命中。
+  MI350X + Qwen3-8B：相对 vLLM（eager）小 batch 约 <span class="highlight">1.3–1.5×</span> 更快；bs=64 时 L2 命中率 39%→61%，HBM 读降 37%，但大 batch 仍输给 hipBLASLt K-split。
+</div>
+
+<h2>1. 问题背景</h2>
+<p>
+  MI300/MI350 等采用 8 个 XCD，每个 XCD 有 <strong>私有 4 MB L2</strong>（共 32 MB），再加 256 MB Infinity Cache 与 HBM。
+  默认全局 load 在 <strong>wave scope</strong> 下只在本地 XCD 的 L2 缓存，<strong>不同 XCD 不共享、不自动失效</strong> _peer 上的副本。
+  若调度把读同一 weight 行的 workgroup 散到多个 XCD，同一权重会从 HBM/LLC 拉多遍。
+</p>
+<p>
+  LLM <strong>decode</strong> 以内存带宽为主：Qwen3-8B 单层权重约 368 MB（bf16），线性层约占 decode 时间 95%。
+  传统服务栈每层多次 kernel launch（约 250 次/token/36 层），kernel 间 device barrier 会 <strong>刷掉 L2</strong>，无法跨算子复用权重。
+</p>
+
+<h2>2. 核心思想：四层任务 + Chiplet-task</h2>
+<pre>
+Wavefront-task  →  单 wave（SiLU、residual、RoPE）
+CU-task         →  单 workgroup（RMSNorm、单头 attention）
+Chiplet-task    →  单 XCD 上全部 worker（GEMM 列分区 + L2 协作）  ← 新增
+Device-task     →  8 个 Chiplet-task 完成一整颗算子
+</pre>
+<p>
+  运行时：整卡一个 persistent kernel；<strong>每 XCD 1 个 scheduler workgroup</strong>（占 8/256 CU），其余为 worker。
+  Chiplet-task 由 scheduler <strong>广播</strong> 到同 XCD 所有 worker；CU-task 在 XCD 内 <strong>round-robin</strong>。
+  事件依赖用 <strong>两级计数</strong>：XCD 内 L2-local 原子，仅每 XCD 最后一个 worker 做 <code>buffer_wbl2</code> + 全局事件更新。
+</p>
+
+<h2>3. Chiplet 感知 GEMM</h2>
+<ul>
+  <li><strong>N-split：</strong> 输出列均分 8 份，每 XCD 算 [M, N/8]，K 维完整归约，无需跨 XCD 同步。</li>
+  <li><strong>M-major 窗口遍历：</strong> 同 XCD 内多 worker 先共享同一 weight 列（M-tile），再换列；避免 N-major 导致并发读不同列。</li>
+  <li><strong>M-split 消融：</strong> 每 XCD 不同 M-tile、无 weight 共享，用于分离「仅调度优化」与「L2 协作」。</li>
+  <li><strong>Cache 策略：</strong> 权重 load 用 streaming（sc1=1, nt=1）；activation 写 NT  bypass L2；跨 XCD 事件轮询用 NT load。</li>
+  <li><strong>融合：</strong> SiLU 并入 gate+up Chiplet-task，减少中间 buffer 的 L2 写回。</li>
+</ul>
+<p>
+  理论 L2 权重命中率：<code>(R-1)/R</code>，<code>R = min(W, m_tiles)</code>，W=每 XCD worker 数（31），<code>m_tiles = ⌈B/T_M⌉</code>。
+</p>
+
+<h2>4. 主要实验结果（Qwen3-8B bf16，MI350X）</h2>
+<table>
+  <thead>
+    <tr><th>Batch</th><th>vLLM eager</th><th>Mirage MPK</th><th>Fleet M-tile</th><th>要点</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>10.51 ms/tok</td><td>7.83 ms</td><td><strong>6.82 ms</strong></td><td>≈1.54× vs vLLM；调度+L2 融合</td></tr>
+    <tr><td>1–16</td><td>—</td><td>基线</td><td>M-tile ≈ M-split</td><td>仅 Chiplet 调度收益（~1.13–1.16× Mirage）</td></tr>
+    <tr><td>32</td><td>~11–12（平台）</td><td>15.62 ms</td><td><strong>12.35 ms</strong></td><td>L2 51.0%；1.27× Mirage；1.06× vLLM</td></tr>
+    <tr><td>64</td><td>~11–12</td><td>24.10 ms</td><td><strong>18.61 ms</strong></td><td>L2 61.4%；HBM 读 0.63×；<em>慢于</em> vLLM</td></tr>
+  </tbody>
+</table>
+<p>
+  bs≥32 时 vLLM 因 hipBLASLt 的 <strong>K-split</strong> 进入算力饱和区；Fleet megakernel 尚未集成同类优化。
+  M-split 在 bs=64 仅 1.03× Mirage，证明大 batch 增益主要来自 <strong>协作 L2</strong>，而非任务粒度 alone。
+</p>
+
+<h2>5. 与相关工作的关系</h2>
+<table>
+  <thead>
+    <tr><th>方向</th><th>代表</th><th>Fleet 差异</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Megakernel</td><td>Hazy、FlashFormer、Mirage MPK</td><td>面向 <strong>分区 L2</strong> 的 Chiplet-task + 分层同步</td></tr>
+    <tr><td>AMD kernel</td><td>HipKittens</td><td>单 kernel；Fleet 是跨算子 persistent 任务图</td></tr>
+    <tr><td>Serving</td><td>vLLM、SGLang</td><td>算子级 launch；难保留跨算子 L2 + 应用级局部性</td></tr>
+    <tr><td>NVIDIA</td><td>Thread block clusters</td><td>粒度小于 chiplet/L2；Fleet 纯软件协调整 XCD L2</td></tr>
+  </tbody>
+</table>
+
+<h2>6. 局限与我们工作的启示</h2>
+<h3>论文局限</h3>
+<ul>
+  <li>单模型、单卡 MI350；无 TP 多卡、prefill、MoE。</li>
+  <li>对比 vLLM 使用 enforce-eager，可能低估 graph 路径。</li>
+  <li>代码未公开；大 batch 需 K-split 与 attention 优化。</li>
+</ul>
+<h3>对我们（MI355 / megakernel / MoE）的启示</h3>
+<ul>
+  <li>把 chiplet 当 <strong>机内 NUMA</strong>：显式 XCD 亲和 + L2 驻留权重与 MonolithEP/RocMoE 方向一致。</li>
+  <li>做 persistent fused kernel 时应预留 <strong>Chiplet-task 粒度</strong> 与 <strong>两级 fence</strong>，避免默认 HIP 调度打散 L2。</li>
+  <li>benchmark 应用 M-split 式消融区分 <strong>调度 vs L2 协作</strong>；报告 rocprofiler L2/HBM。</li>
+  <li>与 Mirage/Primus MPK 路线互补：Mirage 决定 fuse 什么，Fleet 决定 <strong>在哪个 XCD 上跑</strong>。</li>
+</ul>
+
+<h2>7. 延伸阅读</h2>
+<ul>
+  <li>Mirage Persistent Kernel — arXiv:2512.22219</li>
+  <li>HipKittens — arXiv:2511.08083</li>
+  <li>Hazy Research megakernel blog；FlashFormer arXiv:2505.22758</li>
+  <li>AMD CDNA4 ISA（scope、buffer_wbl2）</li>
+</ul>
+
+<p class="footnote">
+  本页由 <code>slab/papers/fleet.md</code> 导出 · arXiv:2604.15379 · 仅供内部阅读
+</p>
+
+</body>
+</html>

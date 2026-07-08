@@ -1,0 +1,101 @@
+<!doctype html>
+<!-- Standalone Chinese reading report for arXiv:2605.11005 (DisagMoE). Source: slab/papers/disagmoe/README.md. Self-contained. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DisagMoE — AF-Pipe 计算通信重叠 MoE 训练 论文阅读报告</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fff; --text-primary:#0a0a0a; --text-secondary:#4a4a4a; --text-tertiary:#7a7a7a; --fill-primary:#f5f5f5; --fill-secondary:#ebebeb; --fill-tertiary:#fafafa; --stroke-secondary:#e1e1e1; --stroke-tertiary:#ececec; --accent:#2563eb; --accent2:#c2410c; --success-bg:#ecfdf5; --warning-bg:#fffbeb; --info-bg:#ecfeff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0e0e10; --text-primary:#f4f4f6; --text-secondary:#b4b4be; --text-tertiary:#80808c; --fill-primary:#1c1c20; --fill-secondary:#232328; --fill-tertiary:#18181b; --stroke-secondary:#28282d; --stroke-tertiary:#1f1f23; --accent:#6ea4ff; --accent2:#fb923c; --success-bg:#062618; --warning-bg:#2a1c08; --info-bg:#082630; } }
+  * { box-sizing:border-box; }
+  html,body { margin:0; padding:0; background:var(--bg); color:var(--text-primary); font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"PingFang SC","Noto Sans SC","Helvetica Neue",Arial,sans-serif; }
+  body { max-width:860px; margin:0 auto; padding:40px 24px 80px; }
+  h1 { font-size:26px; font-weight:650; margin:0 0 12px; letter-spacing:-0.02em; line-height:1.25; }
+  h2 { font-size:19px; font-weight:600; margin:36px 0 12px; padding-top:8px; border-top:1px solid var(--stroke-tertiary); }
+  h2:first-of-type { border-top:none; margin-top:28px; }
+  h3 { font-size:15px; font-weight:600; margin:20px 0 8px; }
+  p { margin:0 0 12px; }
+  .meta { font-size:13px; color:var(--text-secondary); padding:14px 16px; border-radius:8px; background:var(--fill-tertiary); border:1px solid var(--stroke-secondary); margin-bottom:24px; }
+  .meta a { color:var(--accent); }
+  .tldr { padding:16px 18px; border-radius:8px; background:var(--info-bg); border-left:4px solid var(--accent); margin-bottom:18px; }
+  .tldr strong { display:block; margin-bottom:6px; font-size:13px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-secondary); }
+  ul { margin:0 0 14px; padding-left:1.25em; } li { margin-bottom:6px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin:12px 0 18px; }
+  th,td { border:1px solid var(--stroke-secondary); padding:8px 10px; text-align:left; vertical-align:top; }
+  th { background:var(--fill-secondary); font-weight:600; }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; padding:1px 5px; background:var(--fill-secondary); border-radius:3px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:4px; margin-right:6px; background:var(--fill-secondary); color:var(--text-secondary); }
+  .highlight { background:var(--success-bg); padding:2px 4px; border-radius:3px; }
+  .col-a { color:var(--accent); font-weight:600; }
+  .footnote { font-size:12px; color:var(--text-tertiary); margin-top:40px; }
+  @media print { body { max-width:none; padding:16px; } h2 { break-after:avoid; } table { font-size:11px; } }
+</style>
+</head>
+<body>
+
+<h1>DisagMoE:注意力-FFN 解耦的 AF-Pipe 计算通信重叠训练</h1>
+
+<div class="meta">
+  <span class="tag">arXiv 2026-05</span>
+  <span class="tag">ByteDance Seed + UW + Cornell</span>
+  <span class="tag">16×8 H800</span><br><br>
+  <strong>论文:</strong> <a href="https://arxiv.org/abs/2605.11005">arXiv:2605.11005</a><br>
+  <strong>英文题名:</strong> DisagMoE: Computation-Communication overlapped MoE Training via Disaggregated AF-Pipe Parallelism<br>
+  <strong>笔记路径:</strong> <code>slab/papers/disagmoe/README.md</code>
+</div>
+
+<div class="tldr">
+  <strong>TL;DR</strong>
+  把 <strong>attention 与 FFN 拆到不相交 GPU 组</strong>(A-Worker DP、F-Worker EP),用 <strong>AF-Pipe</strong> 多阶段流水把 all-to-all 变 many-to-many(M2N/N2M)并当作<strong>一等流水阶段</strong>与两侧计算 overlap(通信 ↓1/k、bubble ≈ baseline 1/4),再用 <strong>compute-comm roofline + MILP</strong> 自适应给两组分 GPU/NIC。核心洞察:attention FLOPs 随 seq 二次、FFN+comm 线性 → 结构性失衡,对称加带宽推不动。up to <span class="highlight">1.81× vs Megatron-1F1B</span> / <span class="highlight">1.34× vs Tutel/Comet/DualPipe</span>。
+</div>
+
+<h2>1. 问题</h2>
+<p>Large-EP 下 dispatch/combine 两次 all-to-all 卡关键路径,64×H800 通信占 up to 50%(8 节点 all-to-all 占比 78%)。op 级 chunk overlap(Tutel/Comet)窗口被 FFN 上界卡 + FlashAttention 难切 → 留尾巴;micro-batch pipeline(DualPipe)面临 attention 二次/FFN 线性的结构性失衡;serving AFD 与 HeterMoE 训练场景 OOM(仅 ~4.3B)。</p>
+
+<h2>2. 核心方法</h2>
+<ul>
+  <li><strong>解耦放置:</strong> 组件类型切层,A-Worker 组内 DP、F-Worker 组内 EP,每组可持多层 → 显存约束下支持更大 MoE。</li>
+  <li><strong>AF-Pipe:</strong> 时分复用流水(fwd hidden A→F、bwd 梯度 F→A);all-to-all → M2N/N2M 当一等流水阶段 overlap,融 P2P+combine 通信 ↓1/k,warm-up bubble ≈ baseline 1/4;异步 forward/backward/comm 三流。</li>
+  <li><strong>自适应资源分配:</strong> roofline + MILP 分 GPU/NIC——① GPU split 最小化瓶颈阶段消 bubble ② NIC split 最大化 MFU(抬 slack 侧 compute roof);MILP seed + profile 精调。</li>
+</ul>
+
+<h2>3. 主要实验(16×8 H800,seq 4K–32K)</h2>
+<table>
+  <thead><tr><th>维度</th><th>结果</th></tr></thead>
+  <tbody>
+    <tr><td>vs Megatron-1F1B</td><td><strong>1.59–1.81×</strong></td></tr>
+    <tr><td>vs Tutel/Comet / DualPipe</td><td>1.2–1.5× / 1.05–1.13×</td></tr>
+    <tr><td>非重叠通信削减</td><td>vs Tutel −88% / Comet −75% / DualPipe −45%</td></tr>
+    <tr><td>最优 A:F 比</td><td>16K→16:10(1.56× vs baseline / 1.29× vs 均分);4K→均分</td></tr>
+    <tr><td>virtual stage</td><td>≤16 提升,&gt;16 OOM</td></tr>
+  </tbody>
+</table>
+
+<h2>4. 与 monolith-moe / rocmoe 的对照(重点)</h2>
+<p>互补的两条路:我们在单节点把 attention+MoE <strong>融</strong>进 super-kernel,它把 attention/FFN <strong>拆</strong>到不同组。但它的 roofline 洞察对我们有用。</p>
+<table>
+  <thead><tr><th>DisagMoE</th><th class="col-a">我们</th><th>关系</th></tr></thead>
+  <tbody>
+    <tr><td><strong>attention 二次/FFN+comm 线性 → 结构性失衡</strong></td><td>只在 MoE 层内 overlap</td><td>⭐ 佐证 attention 不该占通信预算</td></tr>
+    <tr><td>roofline + MILP 分 GPU/NIC</td><td><code>comm_ratio</code> 单 knob 纯 sweep</td><td>⭐ 可用 roofline 判据先验定 comm_ratio 再精调</td></tr>
+    <tr><td>跨节点 IB 带宽是主约束</td><td>单节点 XGMI 带宽充裕</td><td>他们收益主要来自带宽稀缺;我们 overlap 上限更低(见 R 判据)</td></tr>
+  </tbody>
+</table>
+<h3>结论</h3>
+<ul>
+  <li><strong>attention/FFN compute-comm 比结构性失衡</strong>:佐证我们只做 MoE 层内 overlap 是对的,attention 是 compute-bound 不该占通信预算。</li>
+  <li><strong>roofline+MILP 定资源划分</strong> 比纯 sweep <code>comm_ratio</code> 更有原则,可先算先验点再局部精调。</li>
+  <li>其收益主要来自<strong>跨节点 IB 带宽稀缺</strong>,单节点 XGMI 带宽充裕时 overlap 绝对上限受 bw/peak 比制约(与 MegaScale-MoE R 判据一致)。</li>
+</ul>
+
+<h2>5. 局限</h2>
+<ul>
+  <li>假设 pretraining 固定形状,动态形状(RL)需在线重分配;单一 pipeline 深度共用。</li>
+  <li>6K Python + 2K C++,基于 Megatron-LM,M2N 用 GPUDirect+GPUCopy。</li>
+</ul>
+
+<p class="footnote">本页由 <code>slab/papers/disagmoe/README.md</code> 导出 · arXiv:2605.11005 · 仅供内部阅读</p>
+
+</body>
+</html>

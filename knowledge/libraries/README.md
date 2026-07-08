@@ -18,6 +18,7 @@
 | [AITER](aiter.md) | `3rd/aiter/` | ROCm production-grade op registry,JIT + on-disk cache + 同 op 多后端 dispatch(CK / Triton / ASM / Opus),vLLM/SGLang 默认后端 | active |
 | [Primus-Turbo](primus-turbo.md) | `3rd/turbo/` | AMD 训练侧 fused-op 库,薄壳 dispatcher 站在 CK + hipBLASLt + AITER + Triton 之上,PyTorch/JAX 双前端 | active |
 | [hipBLAS](hipblas.md) | `3rd/hipBLAS/` | 经典 BLAS marshalling 层(同一份 `hipblas.h` + 两个后端 `.cpp`:rocBLAS / cuBLAS thin wrapper);现代 LLM 训练实际消费的是 sibling `hipBLASLt` | deprecated → rocm-libraries |
+| [mKernel](mkernel.md) | github `uccl-project/mKernel` | NVIDIA-only(sm_90a)多-node fused megakernel 算子集:persistent kernel + CTA 角色专精 + GPU-driven libibverbs 网络 + tile 级 comm/compute overlap;**设计参考**(对标 RocMoE/MonolithMoE super-kernel),非可落地 AMD 库 | reference |
 
 ## 跨库综述
 

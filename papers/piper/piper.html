@@ -1,0 +1,106 @@
+<!doctype html>
+<!-- Standalone Chinese reading report for arXiv:2605.05049 (Piper). Source: slab/papers/piper/README.md. Self-contained. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Piper — Frontier/AMD 上的资源建模 + PP×EP MoE 训练 论文阅读报告</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fff; --text-primary:#0a0a0a; --text-secondary:#4a4a4a; --text-tertiary:#7a7a7a; --fill-primary:#f5f5f5; --fill-secondary:#ebebeb; --fill-tertiary:#fafafa; --stroke-secondary:#e1e1e1; --stroke-tertiary:#ececec; --accent:#2563eb; --accent2:#c2410c; --success-bg:#ecfdf5; --warning-bg:#fffbeb; --info-bg:#ecfeff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0e0e10; --text-primary:#f4f4f6; --text-secondary:#b4b4be; --text-tertiary:#80808c; --fill-primary:#1c1c20; --fill-secondary:#232328; --fill-tertiary:#18181b; --stroke-secondary:#28282d; --stroke-tertiary:#1f1f23; --accent:#6ea4ff; --accent2:#fb923c; --success-bg:#062618; --warning-bg:#2a1c08; --info-bg:#082630; } }
+  * { box-sizing:border-box; }
+  html,body { margin:0; padding:0; background:var(--bg); color:var(--text-primary); font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"PingFang SC","Noto Sans SC","Helvetica Neue",Arial,sans-serif; }
+  body { max-width:860px; margin:0 auto; padding:40px 24px 80px; }
+  h1 { font-size:26px; font-weight:650; margin:0 0 12px; letter-spacing:-0.02em; line-height:1.25; }
+  h2 { font-size:19px; font-weight:600; margin:36px 0 12px; padding-top:8px; border-top:1px solid var(--stroke-tertiary); }
+  h2:first-of-type { border-top:none; margin-top:28px; }
+  h3 { font-size:15px; font-weight:600; margin:20px 0 8px; }
+  p { margin:0 0 12px; }
+  .meta { font-size:13px; color:var(--text-secondary); padding:14px 16px; border-radius:8px; background:var(--fill-tertiary); border:1px solid var(--stroke-secondary); margin-bottom:24px; }
+  .meta a { color:var(--accent); }
+  .tldr { padding:16px 18px; border-radius:8px; background:var(--info-bg); border-left:4px solid var(--accent); margin-bottom:18px; }
+  .tldr strong { display:block; margin-bottom:6px; font-size:13px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-secondary); }
+  .correction { padding:14px 16px; border-radius:8px; background:var(--warning-bg); border-left:4px solid var(--accent2); margin-bottom:24px; font-size:13.5px; }
+  .correction strong { color:var(--accent2); }
+  ul { margin:0 0 14px; padding-left:1.25em; } li { margin-bottom:6px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin:12px 0 18px; }
+  th,td { border:1px solid var(--stroke-secondary); padding:8px 10px; text-align:left; vertical-align:top; }
+  th { background:var(--fill-secondary); font-weight:600; }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; padding:1px 5px; background:var(--fill-secondary); border-radius:3px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:4px; margin-right:6px; background:var(--fill-secondary); color:var(--text-secondary); }
+  .highlight { background:var(--success-bg); padding:2px 4px; border-radius:3px; }
+  .col-a { color:var(--accent); font-weight:600; }
+  .footnote { font-size:12px; color:var(--text-tertiary); margin-top:40px; }
+  @media print { body { max-width:none; padding:16px; } h2 { break-after:avoid; } table { font-size:11px; } }
+</style>
+</head>
+<body>
+
+<h1>Piper:资源建模 + PP×EP 的大规模 MoE 训练(Frontier / AMD)</h1>
+
+<div class="meta">
+  <span class="tag">arXiv 2026-05</span>
+  <span class="tag">Oak Ridge National Lab</span>
+  <span class="tag">AMD MI250X</span>
+  <span class="tag">Frontier / RCCL / Dragonfly</span><br><br>
+  <strong>论文:</strong> <a href="https://arxiv.org/abs/2605.05049">arXiv:2605.05049</a><br>
+  <strong>英文题名:</strong> Piper: Efficient Large-Scale MoE Training via Resource Modeling and Pipelined Hybrid Parallelism<br>
+  <strong>笔记路径:</strong> <code>slab/papers/piper/README.md</code>
+</div>
+
+<div class="correction">
+  <strong>⭐ 5 篇里唯一正面 AMD 的一篇。</strong> 跑在 Frontier 超算 = <strong>AMD MI250X + Slingshot/Dragonfly + RCCL</strong>,平台最贴近你的日常栈,RCCL all-to-all / 拓扑经验直接可参考。
+</div>
+
+<div class="tldr">
+  <strong>TL;DR</strong>
+  建解析资源模型(显存/算力/通信),用 <strong>PP×EP 设备网格把 EP 通信约束在拓扑局部小组</strong> + <strong>Dragonfly 拓扑感知分层 all-to-all</strong> + <strong>expert migration 负载均衡(&lt;5% 开销)</strong>。vs X-MoE <span class="highlight">2–3.5× MFU</span>,all-to-all <span class="highlight">1.5–4×(up to 9×)</span> 厂商带宽,Frontier 上把万亿参数 MoE 训到 20% MFU(X-MoE 545B 仅 5.23%)。
+</div>
+
+<h2>1. 问题</h2>
+<p>HPC 平台是非均匀 Dragonfly 网络(组内高带宽/组间稀疏),topology-oblivious all-to-all 在慢链路撞车。细粒度 MoE 产生 tall-and-skinny GEMM(利用率低)。现有框架把组件铺满大组,逼集合通信同时跨很多 rank,且缺平台感知规划(X-MoE 500B+ 仅 5% MFU)。</p>
+
+<h2>2. 核心方法(四组件)</h2>
+<ul>
+  <li><strong>解析资源模型:</strong> 量化任意 (PP,EP) 的显存/算力/通信,micro-bench + 插桩 + profiling 标定。</li>
+  <li><strong>PP×EP 混合并行:</strong> P GPU 组成 PP×EP 网格,每段 EP 卡处理 L/PP 层部分 expert,<strong>把 EP 通信约束在拓扑局部组</strong>(理想单节点/单跳 switch 组),躲开大规模 all-to-all。</li>
+  <li><strong>Dragonfly 拓扑感知分层 all-to-all:</strong> 建 intra-node/intra-group/inter-group 三层,协调异步 P2P 均匀打满 NIC。</li>
+  <li><strong>Expert migration:</strong> 同层 GPU 周期性交换 expert 物理重分布,&lt;5% 开销。</li>
+</ul>
+
+<h2>3. 主要实验(Frontier / MI250X)</h2>
+<table>
+  <thead><tr><th>维度</th><th>结果</th></tr></thead>
+  <tbody>
+    <tr><td>MFU</td><td><strong>2–3.5× vs X-MoE</strong></td></tr>
+    <tr><td>all-to-all 带宽</td><td>1.5–4×(up to 9×)vs 厂商</td></tr>
+    <tr><td>万亿参数 MoE</td><td>Frontier 20% MFU(X-MoE 545B 仅 5.23%)</td></tr>
+    <tr><td>expert migration 开销</td><td>&lt;5%</td></tr>
+  </tbody>
+</table>
+
+<h2>4. 与 monolith-moe / rocmoe 的对照(重点)</h2>
+<table>
+  <thead><tr><th>Piper</th><th class="col-a">我们(AMD 栈)</th><th>关系</th></tr></thead>
+  <tbody>
+    <tr><td>跑在 <strong>AMD MI250X + RCCL + Frontier</strong></td><td>MI355X + RCCL + Primus/Megatron</td><td>⭐ 同厂商栈,RCCL/Dragonfly 经验直接可参考</td></tr>
+    <tr><td>解析模型选 (PP,EP)</td><td>实测 sweep 定配置</td><td>⭐ 可建 MI355X 解析模型先剪枝</td></tr>
+    <tr><td>Dragonfly 拓扑感知 all-to-all(1.5–9× vs 厂商)</td><td>RCCL 默认 all-to-all</td><td>⭐ 多节点时 RCCL 拓扑优化空间巨大</td></tr>
+    <tr><td>tall-and-skinny GEMM 利用率低</td><td>GEMM 才 62% peak</td><td>同痛点,佐证 grouped-GEMM 优化价值</td></tr>
+  </tbody>
+</table>
+<h3>结论</h3>
+<ul>
+  <li><strong>同栈平台对标</strong>:Piper 是少见的 AMD/RCCL MoE 训练公开工作,Dragonfly 拓扑感知 all-to-all 拿 1.5–9× 厂商带宽,说明 RCCL 默认 all-to-all 在非均匀网络上有巨大优化空间——rocmoe/Primus 扩多节点时可抄。</li>
+  <li><strong>解析资源模型先剪枝</strong>(与 UniEP autotuner、DisagMoE roofline 一脉相承):建 MI355X 显存/算力/XGMI 模型把配置空间剪到可行子集再实测精调。</li>
+</ul>
+
+<h2>5. 局限</h2>
+<ul>
+  <li>强绑 Dragonfly/Frontier 拓扑;expert migration 是物理重排(与路由级 balance 互补);基于 Tutel 扩 EP。</li>
+</ul>
+
+<p class="footnote">本页由 <code>slab/papers/piper/README.md</code> 导出 · arXiv:2605.05049 · 仅供内部阅读</p>
+
+</body>
+</html>

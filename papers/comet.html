@@ -1,0 +1,306 @@
+<!doctype html>
+<!--
+  Standalone Chinese reading report for arXiv:2502.19811 (COMET, MLSys'25).
+  Source: slab/papers/comet.md. Self-contained: no external assets.
+  Open in any browser; Ctrl+P → Save as PDF.
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>COMET — MoE 细粒度计算-通信 overlap 论文阅读报告</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --text-primary: #0a0a0a;
+    --text-secondary: #4a4a4a;
+    --text-tertiary: #7a7a7a;
+    --fill-primary: #f5f5f5;
+    --fill-secondary: #ebebeb;
+    --fill-tertiary: #fafafa;
+    --stroke-secondary: #e1e1e1;
+    --stroke-tertiary: #ececec;
+    --accent: #2563eb;
+    --accent2: #c2410c;
+    --success-bg: #ecfdf5;
+    --warning-bg: #fffbeb;
+    --info-bg: #ecfeff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e0e10;
+      --text-primary: #f4f4f6;
+      --text-secondary: #b4b4be;
+      --text-tertiary: #80808c;
+      --fill-primary: #1c1c20;
+      --fill-secondary: #232328;
+      --fill-tertiary: #18181b;
+      --stroke-secondary: #28282d;
+      --stroke-tertiary: #1f1f23;
+      --accent: #6ea4ff;
+      --accent2: #fb923c;
+      --success-bg: #062618;
+      --warning-bg: #2a1c08;
+      --info-bg: #082630;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--text-primary);
+    font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+          "PingFang SC", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
+  }
+  body { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 26px; font-weight: 650; margin: 0 0 12px; letter-spacing: -0.02em; line-height: 1.25; }
+  h2 { font-size: 19px; font-weight: 600; margin: 36px 0 12px; padding-top: 8px; border-top: 1px solid var(--stroke-tertiary); }
+  h2:first-of-type { border-top: none; margin-top: 28px; }
+  h3 { font-size: 15px; font-weight: 600; margin: 20px 0 8px; }
+  p { margin: 0 0 12px; }
+  .meta {
+    font-size: 13px; color: var(--text-secondary);
+    padding: 14px 16px; border-radius: 8px;
+    background: var(--fill-tertiary); border: 1px solid var(--stroke-secondary);
+    margin-bottom: 24px;
+  }
+  .meta a { color: var(--accent); }
+  .tldr {
+    padding: 16px 18px; border-radius: 8px;
+    background: var(--info-bg); border-left: 4px solid var(--accent);
+    margin-bottom: 18px;
+  }
+  .tldr strong { display: block; margin-bottom: 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); }
+  .correction {
+    padding: 14px 16px; border-radius: 8px;
+    background: var(--warning-bg); border-left: 4px solid var(--accent2);
+    margin-bottom: 24px; font-size: 13.5px;
+  }
+  .correction strong { color: var(--accent2); }
+  ul { margin: 0 0 14px; padding-left: 1.25em; }
+  li { margin-bottom: 6px; }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+    margin: 12px 0 18px;
+  }
+  th, td {
+    border: 1px solid var(--stroke-secondary);
+    padding: 8px 10px; text-align: left; vertical-align: top;
+  }
+  th { background: var(--fill-secondary); font-weight: 600; }
+  code, pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+  }
+  code {
+    padding: 1px 5px; background: var(--fill-secondary); border-radius: 3px;
+  }
+  pre {
+    background: var(--fill-primary); border: 1px solid var(--stroke-secondary);
+    border-radius: 6px; padding: 12px 14px; overflow-x: auto;
+    line-height: 1.45; margin: 12px 0 16px;
+  }
+  .tag {
+    display: inline-block; font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 4px; margin-right: 6px;
+    background: var(--fill-secondary); color: var(--text-secondary);
+  }
+  .highlight { background: var(--success-bg); padding: 2px 4px; border-radius: 3px; }
+  .col-comet { color: var(--accent); font-weight: 600; }
+  .col-roc { color: var(--accent2); font-weight: 600; }
+  .footnote { font-size: 12px; color: var(--text-tertiary); margin-top: 40px; }
+  @media print {
+    body { max-width: none; padding: 16px; }
+    h2 { break-after: avoid; }
+    table { font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>COMET:面向 MoE 的细粒度计算-通信 Overlap</h1>
+
+<div class="meta">
+  <span class="tag">MLSys 2025</span>
+  <span class="tag">ByteDance Seed</span>
+  <span class="tag">上海交大</span>
+  <span class="tag">8×H800</span>
+  <span class="tag">万卡部署</span><br><br>
+  <strong>论文:</strong>
+  <a href="https://arxiv.org/abs/2502.19811">arXiv:2502.19811</a> (v3)
+  &middot;
+  <a href="https://arxiv.org/pdf/2502.19811">PDF</a>
+  &middot;
+  <a href="https://github.com/bytedance/flux">代码 (Flux/COMET)</a><br>
+  <strong>英文题名:</strong> Comet: Fine-grained Computation-communication Overlapping for Mixture-of-Experts<br>
+  <strong>笔记路径:</strong> <code>slab/papers/comet.md</code>
+</div>
+
+<div class="tldr">
+  <strong>TL;DR</strong>
+  MoE 层的跨 GPU 通信平均占整模型 <strong>47%</strong> 时间;既有方案用粗粒度 chunk 流水线 overlap,既伤 GEMM 利用率又对不齐。
+  COMET 在<strong>单个融合 kernel 内</strong>做 tile 级 overlap,靠两招:① <strong>shared-tensor 依赖分解</strong>(沿独立维度切 + 按 source rank 重排 tile,本地 token 先算);② <strong>自适应 thread-block 分配</strong>(comm 块与 GEMM 块物理隔离占不同 SM,生产/消费块数 <code>np/nc</code> 按 shape 离线 profile 后运行时选)。
+  8×H800:隐藏 <span class="highlight">86.5%</span> 通信,单 MoE 层 <span class="highlight">1.96×</span>、端到端 <span class="highlight">1.71×</span>,已在万卡集群部署省数百万 GPU 小时。
+</div>
+
+<div class="correction">
+  <strong>重读修正(2026-06-02):</strong> 旧版笔记把方法误写为「warp 专用化 + RDMA + 反向 overlap + 内存省 35%」并拿 FlowMoE(2510.00207,<em>晚于本文 8 个月</em>)对照、给出「2.3×」等数字,均非原文。COMET 实为 <strong>thread-block(线程块)专用化</strong>、用 <strong>NVSHMEM</strong>(非裸 RDMA)、<strong>只优化前向</strong>、内存仅 2MN(可忽略),真实加速 <strong>1.96× 单层 / 1.71× 端到端</strong>。本页据 arXiv v3 全文重写。
+</div>
+
+<h2>1. 问题背景</h2>
+<p>
+  MoE 把专家分散到多 GPU,每层都要 <strong>dispatch(All-to-All)→ FC1/FC2 GroupGEMM → combine(All-to-All)</strong>。
+  在 8×H800 + Megatron-LM 上,MoE 层的设备间通信平均占整模型 <strong>47%</strong> 执行时间——通信是头号瓶颈。
+</p>
+<p>既有 overlap(FasterMoE / Tutel / PipeMoE / ScheMoE)都走<strong>粗粒度 chunk 流水线</strong>,有两个根本低效:</p>
+<table>
+  <thead><tr><th>低效</th><th>机理</th></tr></thead>
+  <tbody>
+    <tr><td>粗粒度切分伤计算效率</td><td>chunk 越小,每 expert token 越少,GroupGEMM tile 利用率掉,<code>t1+t2 &gt; t</code>;首尾 comm 段无法被覆盖 → GPU 空转</td></tr>
+    <tr><td>kernel 级调度不可控</td><td>comm/comp 封成独立 kernel 放不同 stream,资源分配非确定、comp 与 recv 错位;MoE 动态路由让每 expert 的 M 运行时才知道</td></tr>
+  </tbody>
+</table>
+<p>
+  两个洞察:① <strong>解决 token(通信单位)与 128×128 tile(计算单位)的粒度失配</strong> 是高效 overlap 的关键;② <strong>资源比例要在 kernel 内运行时自适应</strong>(随 shape / TP / 硬件而变)。
+</p>
+
+<h2>2. 核心设计:两条流水线 + 两个机制</h2>
+<p>一个 MoE 层 = 两条生产者-消费者流水线,由一块 <strong>shared tensor</strong>(全局形状 <code>(M×topk, N)</code>)连接:</p>
+<pre>
+layer0  comm→comp :  dispatch(All-to-All) ──► FC1 GroupGEMM
+layer1  comp→comm :  FC2 GroupGEMM ──► top-k reduce + combine(All-to-All)
+</pre>
+
+<h3>机制一:Shared-tensor 依赖分解</h3>
+<ul>
+  <li><strong>① 分解(decompose)</strong>——只沿消费者「数据独立」的维度切:layer0 的消费者是 GEMM,token 间独立 → 切 <strong>M(token)维</strong>;layer1 的消费者含 top-k reduce(沿 M 归约)→ 只能切 <strong>N 维</strong>。</li>
+  <li><strong>② 重排(reschedule)</strong>——重组回 tile 粒度,优先调度消费者能立刻用上的部分:
+    <ul>
+      <li>layer0:token <strong>按 source rank 排序</strong>,GroupGEMM <strong>从本地 token 的 tile 先算</strong>,远端 token 同时还在传 → 计算覆盖通信。</li>
+      <li>layer1:GroupGEMM <strong>按列(N)执行</strong>,前 <code>TN</code> 列一算完,reduce+combine 立即起,不必等所有 expert 算完。</li>
+    </ul>
+  </li>
+</ul>
+<pre>
+layer0 重排:按 source rank 排序,本地 token 的 tile 先算
+                                    GroupGEMM 计算序列 ──→
+  原始 shared tensor      重排后        tile#0    tile#1    tile#2
+  (token 乱序混排)   ─►  本地(rank0) ─►  [本地]    [远端]    [远端]
+                        远端(rank1)       ↑         ↑
+                                      立即可算   此时还在 NVLink 传输
+                        → 本地 tile 的计算 覆盖 远端 token 的通信
+
+layer1 重排:GroupGEMM 按列(N)执行,而非逐 expert 顺序
+        N ──►                          前 TN 列一算完
+  ┌──┬──┬──┬──┐  Expert#0             reduce+combine 立刻起步
+  │①│②│③│④│   执行顺序 ① → ② → ③ → ④  (不必等所有 expert)
+  ├──┼──┼──┼──┤  Expert#1
+  │  │  │  │  │  top-3 reduce 沿 M 维(列内)归约
+  └──┴──┴──┴──┘
+   TN
+</pre>
+<p>这步纯属<strong>数据布局 + 计算顺序重排,不改 GEMM kernel 本身</strong>。</p>
+
+<h3>机制二:自适应 workload 分配</h3>
+<ul>
+  <li><strong>Thread-block 专用化(水平融合)</strong>:反对把 comm I/O 塞进 GEMM 的 prologue/epilogue(垂直融合,会拖垮 Hopper TMA 异步流水);改为让 <strong>comm 块与 comp 块物理隔离、占不同 SM</strong>。GEMM 块沿用<strong>与融合前完全相同的 CUTLASS 实现</strong>(producer warp 走 TMA 搬数,consumer warp 发 tensor-core MMA),计算效率不被通信干扰;comm 块从 global memory 读结果、做 reduce、经 NVSHMEM 收发。可移植到 Ampere/Volta,只换 compute 块即可。</li>
+  <li><strong>自适应块数划分</strong>:<code>n = np(生产者) + nc(消费者/通信)</code>,最优划分点随 shape/并行策略漂(TP=8 时 M 4096→16384 使最优 <code>nc</code> 18→26;TP 8→4 使 <code>nc</code> 26→46)。COMET <strong>预编译多档划分点 kernel + 离线 profile 存 metadata + 运行时按 metadata 选</strong>。</li>
+</ul>
+<p><strong>实现:</strong>约 12k 行 C++/CUDA + 2k 行 Python,集成 Megatron-LM;GEMM 用 CUTLASS(行索引缓存进寄存器省 K 迭代访存);通信用 NVSHMEM;buffer 仅 <code>2MN</code>(32–64 MB,可忽略)。</p>
+
+<h2>3. 主要实验结果(8×H800,NVLink)</h2>
+<table>
+  <thead><tr><th>指标</th><th>结果</th></tr></thead>
+  <tbody>
+    <tr><td>端到端延迟下降</td><td>vs Megatron-Cutlass 34.1% · Megatron-TE 42.6% · FasterMoE 44.4% · Tutel 31.8% → 平均 <strong>1.71×</strong></td></tr>
+    <tr><td>单 MoE 层加速</td><td>平均 <strong>1.96×</strong>,跨 token 数稳定 1.28×–2.37×(M 小时优势最大)</td></tr>
+    <tr><td>通信隐藏率</td><td>COMET <strong>86.5%</strong> vs FasterMoE 29.2% vs Tutel 68.6%(计算效率不受损)</td></tr>
+    <tr><td>不同 E / topk</td><td>1.16×–1.83×</td></tr>
+    <tr><td>负载不均(生产 std=0.032)</td><td>std 增大全系统变慢,COMET 始终领先</td></tr>
+    <tr><td>L20 集群(PCIe 25 GB/s,带宽受限)</td><td>1.19×–1.46×</td></tr>
+    <tr><td>生产部署</td><td>万卡级集群,节省数百万 GPU 小时</td></tr>
+  </tbody>
+</table>
+<p>模型:Mixtral-8x7B(E=8,topk=2)· Qwen2-MoE-2.7B(E=64,topk=4)· Phi-3.5-MoE(E=16,topk=2)。Baseline:Megatron-Cutlass / Megatron-TE / FasterMoE / Tutel。</p>
+
+<h2>4. 与 RocMoE-v2 super-kernel 的对照(重点)</h2>
+<p>
+  COMET 与正在做的 <strong>RocMoE-v2</strong>(8×MI355X 上的 MoE 融合 super-kernel)是<strong>同一类工作的两个独立实现</strong>。把两者拉到同一张表,RocMoE 踩过的坑与 COMET 的设计高度互证。
+</p>
+<table>
+  <thead>
+    <tr><th>维度</th><th class="col-comet">COMET</th><th class="col-roc">RocMoE-v2</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>硬件 / 互联</td><td>H800 / L20,NVLink / PCIe</td><td>MI355X(gfx950 CDNA4),XGMI</td></tr>
+    <tr><td>通信库</td><td>NVSHMEM(成熟库)</td><td>手写 HIP IPC + scoreboard</td></tr>
+    <tr><td>融合范围</td><td>半层一个融合 kernel(comm→comp / comp→comm)</td><td><strong>整个前向 5 phase 一个 persistent super-kernel</strong></td></tr>
+    <tr><td>细粒度依赖</td><td>shared-tensor 沿 M(L0)/ N(L1)分解</td><td>Layout-P + 64-bit <code>block_ready</code> 位图</td></tr>
+    <tr><td>重排策略</td><td>按 source rank 排序,本地 token 先算</td><td>receiver-pull:block 就绪即起步</td></tr>
+    <tr><td>comm/comp 隔离</td><td><strong>thread-block 专用化</strong>(不同 SM)</td><td><strong><code>__launch_bounds__(_,1)</code> 物理隔离 CU</strong>(M4-α)</td></tr>
+    <tr><td>资源比例划分</td><td>自适应 <code>np/nc</code>,离线 profile + 运行时选 kernel</td><td><code>kSubWGs</code> build-time knob(64D + 184G CU)</td></tr>
+    <tr><td>GEMM</td><td>CUTLASS grouped GEMM</td><td><code>mfma_tile.h</code>(99.3% MFMA)</td></tr>
+    <tr><td>范围</td><td>仅前向;已生产部署</td><td>前向(开发中),反向 M8 规划</td></tr>
+    <tr><td>结果</td><td>1.96× 单层 / 1.71× e2e,隐藏 86.5%</td><td>目标 BF16 ≤7ms(反超 PyTorch+RCCL 1.3×)</td></tr>
+  </tbody>
+</table>
+
+<h3>三个最强的「同源」点</h3>
+<ul>
+  <li>
+    <strong>物理隔离 comm 与 comp 是收敛结论。</strong> COMET 明确反对把 comm 塞进 GEMM 块(「comm warp 干扰同块 comp warp + 吃不满带宽」)。RocMoE 在 <strong>M2-G α</strong> 撞到一模一样的现象:dispatch CU 与 GEMM stub WG 用 <code>launch_bounds(_,2)</code> 共驻一 CU 时 <strong>dispatch wall 5.51→8.43 ms(+53%)</strong>(共抢 wave scheduler / L2);随后 <strong>M4-α 用 <code>__launch_bounds__(_,1)</code> 强制分到不同 CU,dispatch wall 全段 −35~37%</strong>。    这就是 COMET「thread-block 专用化」在 CDNA4 上的等价物——两边独立得出「通信和计算必须占不同物理执行单元」。
+  </li>
+</ul>
+<pre>
+   COMET (Hopper SM)                RocMoE-v2 (CDNA4 CU)
+   ─────────────────                ────────────────────
+   comp SM  │  comm SM              GEMM CU  │  dispatch CU
+   (CUTLASS)│ (NVSHMEM)             (mfma_tile)│ (IPC pull)
+            │                                │
+   thread-block 专用化               __launch_bounds__(_,1)
+   (np/nc 自适应)                    (kSubWGs: 184G + 64D)
+            ▲                                ▲
+            └─ 同一收敛结论:comm/comp 占不同物理执行单元 ─┘
+            反例代价:塞一起 → COMET TMA 卡顿 / RocMoE dispatch +53%
+</pre>
+<ul>
+  <li><strong>重排让消费者从本地/已就绪数据先算。</strong> COMET 按 source rank 排序、本地 tile 先算;RocMoE 用 receiver-pull + per-block scoreboard。都把「等全部 token」降成「等这个 tile/block 的 token」。</li>
+  <li><strong>comm/comp 资源比例 shape-dependent。</strong> COMET 的 <code>nc</code> 随 M/TP 漂(18→46,离线 profile);RocMoE 的 <code>kSubWGs</code> 五档 sweep + 三次返工才钉在 8。都承认这个划分点不能拍死。</li>
+</ul>
+
+<h3>RocMoE 可借鉴 COMET 的点</h3>
+<ul>
+  <li><strong>预编译多档划分点 + 运行时按 (T, skew) 选 kernel</strong>:RocMoE 的 <code>kSubWGs</code> 是 build-time 单值,hot_cov50 下 dispatch 会变 critical path,值得做成可选。</li>
+  <li><strong>layer1 按列(N)产出即推 combine</strong>:RocMoE 可评估 FC2 是否也能列产出即推,进一步藏 combine。</li>
+  <li><strong>行索引缓存进寄存器</strong>:对照 mfma_tile.h 取行索引路径,看是否有同类省访存。</li>
+</ul>
+
+<h3>RocMoE 更激进 / 更难处</h3>
+<ul>
+  <li>COMET 一次只融合半层、靠 NVSHMEM 兜底;RocMoE 把整个前向五 phase 融成一个 persistent kernel 且无 NVSHMEM,手写 IPC + cross-rank barrier,<strong>grid_sync 调度税成了主要开销</strong>(Phase 1 <code>grid_sync_v2</code> 单项 −14%)——这是 COMET 不会遇到的。</li>
+  <li>COMET 在带宽充裕的 NVLink 上 1.96×;RocMoE 在 XGMI 上要先反超 PyTorch+RCCL,且 receiver-pull 比 push 每 token 慢 ~43%(架构性),靠 overlap 藏掉。</li>
+</ul>
+
+<h2>5. 局限与复现</h2>
+<ul>
+  <li><strong>只优化前向</strong>,反向 overlap 未涉及。</li>
+  <li>依赖 <strong>NVSHMEM</strong>(NVIDIA 专有),非 NVIDIA 平台需等价细粒度 GPU-initiated 通信原语。</li>
+  <li>自适应划分靠<strong>离线 profile + 预编译多 kernel</strong>,新 shape/硬件需重 profile。</li>
+  <li>评测限 8 GPU 单节点;代码已开源 <a href="https://github.com/bytedance/flux">bytedance/flux</a>(CUDA 12.3 + NVSHMEM 2.11 + CUTLASS + Megatron-LM)。</li>
+</ul>
+
+<h2>6. 延伸阅读</h2>
+<ul>
+  <li>Flux(同团队 dense overlap 前作)— arXiv:2406.06858</li>
+  <li>Wang et al. 「Overlap communication with dependent computation via decomposition」— ASPLOS'22</li>
+  <li>Centauri — ASPLOS'24;Tutel — MLSys'23</li>
+  <li>RocMoE-v2 架构与进展 — <code>slab/notes/rocmoe/README.md</code></li>
+  <li>CCO 实现技巧 — <code>slab/.cursor/skills/cco-pipeline-overlap/SKILL.md</code></li>
+</ul>
+
+<p class="footnote">
+  本页由 <code>slab/papers/comet.md</code> 导出 · arXiv:2502.19811 v3 · MLSys 2025 · 仅供内部阅读
+</p>
+
+</body>
+</html>

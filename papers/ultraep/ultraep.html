@@ -1,0 +1,109 @@
+<!doctype html>
+<!-- Standalone Chinese reading report for arXiv:2606.04101 (UltraEP). Source: slab/papers/ultraep/README.md. Self-contained. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UltraEP — RSN 实时精确负载均衡 论文阅读报告</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fff; --text-primary:#0a0a0a; --text-secondary:#4a4a4a; --text-tertiary:#7a7a7a; --fill-primary:#f5f5f5; --fill-secondary:#ebebeb; --fill-tertiary:#fafafa; --stroke-secondary:#e1e1e1; --stroke-tertiary:#ececec; --accent:#2563eb; --accent2:#c2410c; --success-bg:#ecfdf5; --warning-bg:#fffbeb; --info-bg:#ecfeff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0e0e10; --text-primary:#f4f4f6; --text-secondary:#b4b4be; --text-tertiary:#80808c; --fill-primary:#1c1c20; --fill-secondary:#232328; --fill-tertiary:#18181b; --stroke-secondary:#28282d; --stroke-tertiary:#1f1f23; --accent:#6ea4ff; --accent2:#fb923c; --success-bg:#062618; --warning-bg:#2a1c08; --info-bg:#082630; } }
+  * { box-sizing:border-box; }
+  html,body { margin:0; padding:0; background:var(--bg); color:var(--text-primary); font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"PingFang SC","Noto Sans SC","Helvetica Neue",Arial,sans-serif; }
+  body { max-width:860px; margin:0 auto; padding:40px 24px 80px; }
+  h1 { font-size:26px; font-weight:650; margin:0 0 12px; letter-spacing:-0.02em; line-height:1.25; }
+  h2 { font-size:19px; font-weight:600; margin:36px 0 12px; padding-top:8px; border-top:1px solid var(--stroke-tertiary); }
+  h2:first-of-type { border-top:none; margin-top:28px; }
+  h3 { font-size:15px; font-weight:600; margin:20px 0 8px; }
+  p { margin:0 0 12px; }
+  .meta { font-size:13px; color:var(--text-secondary); padding:14px 16px; border-radius:8px; background:var(--fill-tertiary); border:1px solid var(--stroke-secondary); margin-bottom:24px; }
+  .meta a { color:var(--accent); }
+  .tldr { padding:16px 18px; border-radius:8px; background:var(--info-bg); border-left:4px solid var(--accent); margin-bottom:18px; }
+  .tldr strong { display:block; margin-bottom:6px; font-size:13px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-secondary); }
+  ul { margin:0 0 14px; padding-left:1.25em; } li { margin-bottom:6px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin:12px 0 18px; }
+  th,td { border:1px solid var(--stroke-secondary); padding:8px 10px; text-align:left; vertical-align:top; }
+  th { background:var(--fill-secondary); font-weight:600; }
+  code,pre { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
+  code { padding:1px 5px; background:var(--fill-secondary); border-radius:3px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:4px; margin-right:6px; background:var(--fill-secondary); color:var(--text-secondary); }
+  .highlight { background:var(--success-bg); padding:2px 4px; border-radius:3px; }
+  .col-a { color:var(--accent); font-weight:600; }
+  .footnote { font-size:12px; color:var(--text-tertiary); margin-top:40px; }
+  @media print { body { max-width:none; padding:16px; } h2 { break-after:avoid; } table { font-size:11px; } }
+</style>
+</head>
+<body>
+
+<h1>UltraEP:Rack-Scale 节点上的实时精确负载均衡</h1>
+
+<div class="meta">
+  <span class="tag">arXiv 2026-06</span>
+  <span class="tag">北大 + 小红书 + 上海 AI Lab</span>
+  <span class="tag">Rack-Scale Node</span>
+  <span class="tag">AMD Helios / NVIDIA Rubin</span>
+  <span class="tag">up to 256 GPU</span><br><br>
+  <strong>论文:</strong> <a href="https://arxiv.org/abs/2606.04101">arXiv:2606.04101</a><br>
+  <strong>英文题名:</strong> UltraEP: Unleash MoE Training and Inference on Rack-Scale Nodes with Near-Optimal Load Balancing<br>
+  <strong>笔记路径:</strong> <code>slab/papers/ultraep/README.md</code>
+</div>
+
+<div class="tldr">
+  <strong>TL;DR</strong>
+  首个在 RSN(64+ GPU scale-up 域)上对 large-EP MoE 做 <strong>exact-load、实时(每 microbatch+每层)</strong> 负载均衡的系统。既有 EPLB/LPLB 靠历史预测追不上非平稳负载;UltraEP 在 gating 后拿真实负载,用 <strong>quota-driven planner</strong>(联合 replication+reroute,GPU-native 单 CTA/SM 求解 ~0.1ms)+ <strong>RSN-native 通信</strong>(persistent tile streaming + chunk relay 树)。inter-rank 不均 1.30–4.01 → <span class="highlight">1.01–1.04</span>,达 <span class="highlight">94.6% 训练 / 93.9% serving</span> 理想吞吐,训练 1.42× vs Megatron、serving 1.56× vs SGLang。
+</div>
+
+<h2>1. 问题</h2>
+<p>Large-EP 放大专家负载不均 → 计算 straggler + all-to-all 瓶颈 + 激活显存尖峰。EPLB/LPLB 靠历史预测周期性重排,但前沿细粒度 MoE 专家热度在 microbatch/层/数据域间剧烈漂移,stale 预测常失效甚至加剧不均。转 exact load 需在 gating 后才拿到 → 均衡被逼上关键路径。<strong>RSN 把 scale-up 域扩到整机架 64+ GPU,使热路径均衡第一次物理可行。</strong></p>
+
+<h2>2. 核心方法</h2>
+<ul>
+  <li><strong>Replication-only + 跨层 buffer 复用:</strong> 不重排 main expert;redundant slot 不存 optimizer state、跨层共享 buffer,Qwen3-235B 单 slot 3.3GB→36MB。</li>
+  <li><strong>Quota-driven planner:</strong> 二分负载阈值 τ + 贪心可行性 oracle,<strong>用 quota 当耦合变量</strong>同时选 replica 并预留 reroute 容量(只创建有效 replica);GPU-native 单 CTA/SM + shared memory + warp 归约。</li>
+  <li><strong>Reroute:</strong> 本地 token 优先消费本地 quota 省跨 rank 流量,残余按比例分 + 确定性 rounding。</li>
+  <li><strong>RSN-native 通信:</strong> persistent tile streaming(double-buffer,任务查找/寻址折进流水)+ 热 expert(replica&gt;4)建 chunk-streaming relay 树(frontier≈√fan-out,load-aware 选发送量最小 rank 当 relay)。</li>
+  <li>反向:恢复 redundant weight(与 Wgrad overlap)+ 每 main expert 聚合 replica 梯度回 main buffer(保训练等价)。</li>
+</ul>
+
+<h2>3. 主要实验(RSN,up to 256 GPU,vs Megatron/SGLang/EPLB/LPLB)</h2>
+<table>
+  <thead><tr><th>指标</th><th>结果</th></tr></thead>
+  <tbody>
+    <tr><td>理想吞吐占比</td><td><strong>训练 94.6% / serving 93.9%</strong></td></tr>
+    <tr><td>训练 / serving 加速</td><td><strong>1.42× vs Megatron</strong> / <strong>1.56× vs SGLang</strong></td></tr>
+    <tr><td>inter-rank 不均</td><td>1.30–4.01 → <strong>1.01–1.04</strong></td></tr>
+    <tr><td>expert 复制通信</td><td>3.1–5.5× vs torch.dist/DeepEP;relay 再 +1.3–1.8×(近常数 0.28ms)</td></tr>
+    <tr><td>激活显存尖峰</td><td>无均衡训练 2× / serving 11× 高于 ideal,UltraEP 拉回接近 ideal</td></tr>
+    <tr><td>生产 RefMoE-288B</td><td>92%+ ideal,+9.6% vs no-balance,loss 不变</td></tr>
+    <tr><td>热路径开销</td><td>仅 0.33ms 前向(占总 1.8%)</td></tr>
+  </tbody>
+</table>
+
+<h2>4. 与 monolith-moe / rocmoe 的对照(重点)</h2>
+<p>平台高度对口:显式点名 <strong>AMD Helios RSN</strong>,而我们正是单节点 8×MI355X / XGMI(一个小型 scale-up 域)。它解决我们一直回避的<strong>负载不均</strong>正交轴。</p>
+<table>
+  <thead><tr><th>UltraEP</th><th class="col-a">我们</th><th>关系</th></tr></thead>
+  <tbody>
+    <tr><td>exact-load 实时均衡</td><td>固定 round-robin 分 WG,假设 token 均匀</td><td>⭐⭐ 直击 A2 失败根因(token 不均致 tile 利用率坍塌)</td></tr>
+    <tr><td>quota 联合 replication+reroute,GPU-native(单 CTA/SM,~0.1ms)</td><td>暂无系统级均衡</td><td>⭐ 可在 super-kernel 内塞一个 planning phase</td></tr>
+    <tr><td>persistent tile streaming + chunk relay 树</td><td>persistent super-kernel + receiver-pull</td><td>通信同源;relay 树是我们没做的 fan-out 分摊</td></tr>
+    <tr><td><strong>RSN scale-up 域内均衡才可行</strong></td><td>我们本就在 XGMI scale-up 域内</td><td>⭐ 天然满足前提</td></tr>
+  </tbody>
+</table>
+<h3>三条最有用的结论</h3>
+<ul>
+  <li><strong>负载不均要在系统层解</strong>——正是我们 A1/A2「动 compute 排布无效」的互补答案:不要让排布吸收不均,而应在 dispatch 前按 exact load 分 quota / 迁 token。</li>
+  <li><strong>quota-driven GPU-native 求解</strong>(单 CTA/SM,~0.1ms)证明热路径做均衡决策可行,super-kernel 可塞类似 planning phase。</li>
+  <li>我们<strong>天然满足 RSN 前提</strong>(XGMI),UltraEP 点名 AMD Helios,是 rocmoe 引入负载均衡时的首选参考。</li>
+</ul>
+
+<h2>5. 局限</h2>
+<ul>
+  <li>强依赖 RSN scale-up 域,标准 RDMA 集群(EP 跨节点走 scale-out)不适用。</li>
+  <li>9.6K 行 C++/Python,集成 Megatron-LM + SGLang,用 DeepEP hybrid-ep 分支。</li>
+</ul>
+
+<p class="footnote">本页由 <code>slab/papers/ultraep/README.md</code> 导出 · arXiv:2606.04101 · 仅供内部阅读</p>
+
+</body>
+</html>

@@ -1,0 +1,203 @@
+<!doctype html>
+<!--
+  Standalone Chinese reading report for arXiv:2505.11432 (MegaScale-MoE, EuroSys'26).
+  Source: slab/papers/megascale-moe.md. Self-contained: no external assets.
+  Open in any browser; Ctrl+P → Save as PDF.
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MegaScale-MoE — 生产级大规模 MoE 训练通信高效系统 阅读报告</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --text-primary: #0a0a0a;
+    --text-secondary: #4a4a4a;
+    --text-tertiary: #7a7a7a;
+    --fill-primary: #f5f5f5;
+    --fill-secondary: #ebebeb;
+    --fill-tertiary: #fafafa;
+    --stroke-secondary: #e1e1e1;
+    --stroke-tertiary: #ececec;
+    --accent: #2563eb;
+    --accent2: #c2410c;
+    --success-bg: #ecfdf5;
+    --warning-bg: #fffbeb;
+    --info-bg: #ecfeff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e0e10;
+      --text-primary: #f4f4f6;
+      --text-secondary: #b4b4be;
+      --text-tertiary: #80808c;
+      --fill-primary: #1c1c20;
+      --fill-secondary: #232328;
+      --fill-tertiary: #18181b;
+      --stroke-secondary: #28282d;
+      --stroke-tertiary: #1f1f23;
+      --accent: #6ea4ff;
+      --accent2: #fb923c;
+      --success-bg: #062618;
+      --warning-bg: #2a1c08;
+      --info-bg: #082630;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--text-primary);
+    font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+          "PingFang SC", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
+  }
+  body { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 26px; font-weight: 650; margin: 0 0 12px; letter-spacing: -0.02em; line-height: 1.25; }
+  h2 { font-size: 19px; font-weight: 600; margin: 36px 0 12px; padding-top: 8px; border-top: 1px solid var(--stroke-tertiary); }
+  h2:first-of-type { border-top: none; margin-top: 28px; }
+  h3 { font-size: 15px; font-weight: 600; margin: 20px 0 8px; }
+  p { margin: 0 0 12px; }
+  .meta {
+    font-size: 13px; color: var(--text-secondary);
+    padding: 14px 16px; border-radius: 8px;
+    background: var(--fill-tertiary); border: 1px solid var(--stroke-secondary);
+    margin-bottom: 24px;
+  }
+  .meta a { color: var(--accent); }
+  .tldr {
+    padding: 16px 18px; border-radius: 8px;
+    background: var(--info-bg); border-left: 4px solid var(--accent);
+    margin-bottom: 18px;
+  }
+  .tldr strong { display: block; margin-bottom: 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); }
+  .correction {
+    padding: 14px 16px; border-radius: 8px;
+    background: var(--warning-bg); border-left: 4px solid var(--accent2);
+    margin-bottom: 24px; font-size: 13.5px;
+  }
+  .correction strong { color: var(--accent2); }
+  ul { margin: 0 0 14px; padding-left: 1.25em; }
+  li { margin-bottom: 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0 18px; }
+  th, td { border: 1px solid var(--stroke-secondary); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--fill-secondary); font-weight: 600; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  code { padding: 1px 5px; background: var(--fill-secondary); border-radius: 3px; }
+  pre { background: var(--fill-primary); border: 1px solid var(--stroke-secondary); border-radius: 6px; padding: 12px 14px; overflow-x: auto; line-height: 1.45; margin: 12px 0 16px; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; margin-right: 6px; background: var(--fill-secondary); color: var(--text-secondary); }
+  .highlight { background: var(--success-bg); padding: 2px 4px; border-radius: 3px; }
+  .col-a { color: var(--accent); font-weight: 600; }
+  .col-b { color: var(--accent2); font-weight: 600; }
+  .footnote { font-size: 12px; color: var(--text-tertiary); margin-top: 40px; }
+  @media print { body { max-width: none; padding: 16px; } h2 { break-after: avoid; } table { font-size: 11px; } }
+</style>
+</head>
+<body>
+
+<h1>MegaScale-MoE:生产级大规模 MoE 训练的通信高效系统</h1>
+
+<div class="meta">
+  <span class="tag">EuroSys 2026</span>
+  <span class="tag">ByteDance Seed</span>
+  <span class="tag">北京大学</span>
+  <span class="tag">1440×H800</span>
+  <span class="tag">万卡生产部署</span><br><br>
+  <strong>论文:</strong>
+  <a href="https://arxiv.org/abs/2505.11432">arXiv:2505.11432</a> (v3)
+  &middot; <a href="https://doi.org/10.1145/3767295.3769325">DOI</a>
+  &middot; <a href="https://arxiv.org/pdf/2505.11432">PDF</a><br>
+  <strong>英文题名:</strong> MegaScale-MoE: Large-Scale Communication-Efficient Training of Mixture-of-Experts Models in Production<br>
+  <strong>笔记路径:</strong> <code>slab/papers/megascale-moe.md</code>
+</div>
+
+<div class="tldr">
+  <strong>TL;DR</strong>
+  实测 MoE 训练中通信占前向 <strong>43.6%</strong>、占整训练 <strong>32%</strong>(dispatch/combine 两次 A2A)。核心洞察:MoE 与 dense 的差异是<strong>层内</strong>的,于是把每个 MoE 层<strong>锁在单节点内(NVLink)</strong>,避免跨节点 EP。三支柱:① 通信高效并行(attention 用 <strong>SP 替 TP</strong> 通信 ↓~4×,FFN 用 <strong>EP 替 TP</strong>,top-k&gt;n 时 AG+scatter+RS 替 A2A);② <strong>inter-op overlap</strong>(holistic 调度 + selective 重算,激活 ↓50%)+ <strong>intra-op overlap</strong>(A2A/AG 融进 GEMM/GroupedGEMM kernel,device barrier + swizzle);③ <strong>通信压缩</strong>(FP32→BF16 梯度 A2A、FP8 A2A)。
+  1440×H800 训 352B MoE:<span class="highlight">1.41M tok/s,1.88× vs Megatron-LM</span>;已生产部署 &gt;1 万卡、跑数月。
+</div>
+
+<div class="correction">
+  <strong>重读修正(2026-07-07):</strong> 旧笔记(arXiv「待公开」时期)<strong>大量脑补</strong>,把本文写成「万卡容错 + 拓扑感知路由 + 分层 EP + 42% MFU + &lt;30s 故障恢复 + METIS 伪代码」——<strong>这些都不是本文贡献</strong>。据 arXiv:2505.11432 v3 全文,本文<strong>不做容错、不做拓扑路由、不做分层 EP</strong>;真实三支柱见 TL;DR。本页据全文完全重写。
+</div>
+
+<h2>1. 问题背景</h2>
+<p>ByteDance 常态化数千卡训数千亿参数 MoE。MoE 靠稀疏激活降训练成本,但<strong>系统视角下通信是瓶颈</strong>:实测通信占前向 43.6%、整训练 32%。两成因:① MoE 参数大 → 需更多 GPU 做模型并行 → 通信更多;② 稀疏计算在 fwd/bwd 各加 <strong>2 次 all-to-all</strong>(dispatch + combine)。硬件上算力增速远快于带宽 + 低精度进一步压缩计算 → 通信占比更突出(TP 扩多节点常 &gt;50%)。</p>
+<p><strong>关键洞察:</strong> MoE 与 dense 的架构差异是<strong>层内</strong>的,也是通信开销主源。于是把每个 MoE 层<strong>约束在单节点内</strong>用 NVLink,避免跨节点 EP;节点间用 PP 分参数并 overlap 不同 micro-batch。</p>
+
+<h2>2. 三大支柱</h2>
+<h3>支柱一:通信高效并行(降通信量)</h3>
+<ul>
+  <li><strong>Attention 用 SP(Ulysses 式)替 TP</strong>:TP 通信 <code>2bsh(n-1)/n</code>;SP 降到 <code>2bsh(n-1)/n·(2+2/m)/n</code>,NVLink domain=8 时约 TP 的 <strong>1/4</strong>。SP 复制权重但靠分层通信,参数同步开销与 TP 仅差 0.3–3.1%,额外显存仅 +1.2–5.4%。放弃 CP(causal mask 负载不均)。</li>
+  <li><strong>FFN 用 EP 替 TP</strong>:TP 切 expert hidden 维伤 GEMM;EP 每卡完整 expert。<strong>自适应通信</strong>:top-k&gt;n 时用 <code>all-gather + 本地 scatter + reduce-scatter</code> 替 A2A(ring 式、只与邻居通,更高效);自研 CUDA scatter/gather 算子替 torch。</li>
+</ul>
+<h3>支柱二:通信-计算 overlap</h3>
+<p>把 MoE 层 fwd/bwd 拆成独立 kernel(不走整块 autograd)。</p>
+<ul>
+  <li><strong>Inter-op:</strong> holistic 调度在不同 stream 重排算子,把通信藏进无依赖计算;<strong>selective activation rematerialization</strong> 只存重算贵的激活,反向重算/重通信并 overlap 掉 → 激活内存 <strong>↓~50%</strong> 不掉速。</li>
+  <li><strong>Intra-op(关键路径通信):</strong> 通信切 tile 融进 compute kernel,<strong>device-memory barrier + tile 级通知</strong>去 host 干预。两类:attention 的 <code>A2A+GEMM / GEMM+A2A</code>(专用 copy engine + 全 SM 留给计算 + swizzle 对齐到达节奏 + 少量 SM 给通信);FFN 的 <code>AG+scatter+GroupedGEMM / GroupedGEMM+gather+RS</code>(按 expert 再按 source rank 排序,让每 tile 只依赖少数 rank)。</li>
+</ul>
+<h3>支柱三:通信压缩</h3>
+<ul>
+  <li><strong>DP:</strong> 梯度 FP32→BF16,但用 <strong>A2A 收分片 + FP32 归约</strong>(避免 BF16 ring 累加误差),梯度通信 ↓50%,精度损失可忽略。</li>
+  <li><strong>FP8:</strong> TP 的 BF16 RS 换 <strong>FP8 A2A(E4M3)</strong> + FP32 归约;前向 per-token、反向 per-channel + group(128) 量化。</li>
+</ul>
+
+<h2>3. 主要实验(H800,vs Megatron-LM)</h2>
+<h3>强扩展 352B(固定 batch=720)</h3>
+<table>
+  <thead><tr><th>#GPUs</th><th>Megatron (tok/s)</th><th>MegaScale-MoE (tok/s)</th><th>加速</th></tr></thead>
+  <tbody>
+    <tr><td>240</td><td>151.1k</td><td>272.9k</td><td>1.81×</td></tr>
+    <tr><td>480</td><td>301.1k</td><td>498.6k</td><td>1.65×</td></tr>
+    <tr><td>720</td><td>430.5k</td><td>740.1k</td><td>1.72×</td></tr>
+    <tr><td>960</td><td>550.2k</td><td>963.8k</td><td>1.77×</td></tr>
+    <tr><td><strong>1440</strong></td><td>746.6k</td><td><strong>1407.7k</strong></td><td><strong>1.88×</strong></td></tr>
+  </tbody>
+</table>
+<p>训 1T token:1440 卡从 15.50 天 → <strong>8.22 天</strong>。MFU 随卡数 32.48%→27.89%(固定 batch → bubble 增多,属预期)。弱扩展 1.74–1.79× 且近线性(吞吐 −0.2% vs Megatron −2.74%)。跨 GPU(H800/H20/A100)MFU 最高 1.58×。</p>
+<h3>消融拆解(240 卡,batch 720)</h3>
+<table>
+  <thead><tr><th>配置</th><th>归一化吞吐</th><th>增量</th></tr></thead>
+  <tbody>
+    <tr><td>baseline(TP+TP,无 overlap)</td><td>1.00</td><td>—</td></tr>
+    <tr><td>+ SP+EP</td><td>1.13</td><td>+13%</td></tr>
+    <tr><td>+ inter-op overlap</td><td>1.22</td><td>+9%</td></tr>
+    <tr><td>+ intra-op overlap</td><td>1.28</td><td>+6%</td></tr>
+  </tbody>
+</table>
+<p>SP+EP 比 TP+TP 高 14.9–32.9% MFU;intra-op overlap 令 comm+comp 合计时间 ↓1.2–4.7×、迭代时间 ↓7.1–12.9%;SAR 激活内存 ↓45.5–57.2%、整体显存 ↓21.3–35%,性能差 &lt;0.5%;BF16/FP8 收敛均稳定。</p>
+
+<h2>4. 与 monolith-moe / rocmoe 的对照(重点)</h2>
+<p>MegaScale-MoE 是我们 super-kernel 在<strong>「host/collective/op 级 overlap」维度上的最强生产级对照</strong>:证明 overlap 生产里稳拿 1.88×,并给了几把可直接搬的尺子。</p>
+<table>
+  <thead><tr><th>MegaScale-MoE</th><th class="col-a">我们(monolith-moe / rocmoe)</th><th>关系</th></tr></thead>
+  <tbody>
+    <tr><td>intra-op:A2A+GEMM / GroupedGEMM+gather+RS 融进 kernel</td><td>整前向 5 phase 融成 persistent super-kernel</td><td>同类思想;他们半层一 kernel + device barrier</td></tr>
+    <tr><td>device-memory barrier + tile 级通知,去 host</td><td>64-bit <code>block_ready</code> 位图 + receiver-pull</td><td>收敛一致:tile/block 级就绪信号,无 host 介入</td></tr>
+    <tr><td>给通信分少量 SM + swizzle 对齐到达节奏</td><td><code>comm_ratio</code> 分 CU + XOR swizzle</td><td>直接对应;「comm SM 数调到 comm≈comp」= comm_ratio 甜点</td></tr>
+    <tr><td>按 source rank 排序让 tile 只依赖少数 rank</td><td>receiver-pull:block 就绪即算</td><td>同源,「等全部 token」→「等这个 tile 的 token」</td></tr>
+    <tr><td>通信压缩 FP32→BF16 / FP8 A2A</td><td>backlog:FP8/mxfp8 weights</td><td>同类正交杠杆</td></tr>
+  </tbody>
+</table>
+<h3>三条最有用的结论</h3>
+<ul>
+  <li><strong>scale-up 判据可直接套 MI355X:</strong> <code>R ≈ (3/2)·h_ffn·(bandwidth/peak)</code>,&gt;1 才有 overlap 净收益。拿 XGMI 带宽 + MI355X BF16/FP8 peak + DSV3 h_ffn 代入,能先验判断给定 shape 下 overlap 上限——正是「512 t/g 赢、2048/8192 t/g 输」的一个理论解释器,值得算一遍写进 rocmoe README。</li>
+  <li><strong>「MoE 层锁节点内」是他们的前提,也正是我们的现状</strong>(单节点 8×MI355X/XGMI)。差异化:把 op 级 overlap 再推进到 <strong>in-kernel chunk 级 persistent kernel</strong>(他们仍是「半层一 kernel + copy engine」)。</li>
+  <li><strong>1.88× 是 op/collective 级 overlap 的生产上限参照:</strong> 我们要证明 in-kernel 融合能在 AMD/XGMI 上超过这个天花板,否则不如直接移植 MegaScale-MoE 式方案。这条写进价值主张。</li>
+</ul>
+
+<h2>5. 局限与复现</h2>
+<ul>
+  <li><strong>依赖节点内 NVLink:</strong> 核心前提是「MoE 层锁节点内」,一旦 EP 跨出 NVLink 到 RDMA 级带宽,R&gt;1 能否维持是公开问题(作者自述)。</li>
+  <li>holistic 调度靠<strong>手工</strong>(算子序 / 并发度 / 给通信几个 SM),自动化留 future work。</li>
+  <li>MoE 计算算子仍是 straggler 源(GroupedGEMM 资源控制致同步延迟、动态形状显存碎片、gating 小算子受 CPU jitter)。</li>
+  <li>代码未开源(生产系统);Table 2 给全模型配置可复现思路。</li>
+</ul>
+
+<p class="footnote">
+  本页由 <code>slab/papers/megascale-moe.md</code> 导出 · arXiv:2505.11432 v3 · EuroSys 2026 · 仅供内部阅读
+</p>
+
+</body>
+</html>

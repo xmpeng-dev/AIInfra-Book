@@ -1,0 +1,98 @@
+<!doctype html>
+<!-- Standalone Chinese reading report for arXiv:2601.20595 (AutoOverlap). Source: slab/papers/autooverlap/README.md. Self-contained. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoOverlap — chunk 抽象自动细粒度 overlap 编译器 论文阅读报告</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fff; --text-primary:#0a0a0a; --text-secondary:#4a4a4a; --text-tertiary:#7a7a7a; --fill-primary:#f5f5f5; --fill-secondary:#ebebeb; --fill-tertiary:#fafafa; --stroke-secondary:#e1e1e1; --stroke-tertiary:#ececec; --accent:#2563eb; --accent2:#c2410c; --success-bg:#ecfdf5; --warning-bg:#fffbeb; --info-bg:#ecfeff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0e0e10; --text-primary:#f4f4f6; --text-secondary:#b4b4be; --text-tertiary:#80808c; --fill-primary:#1c1c20; --fill-secondary:#232328; --fill-tertiary:#18181b; --stroke-secondary:#28282d; --stroke-tertiary:#1f1f23; --accent:#6ea4ff; --accent2:#fb923c; --success-bg:#062618; --warning-bg:#2a1c08; --info-bg:#082630; } }
+  * { box-sizing:border-box; }
+  html,body { margin:0; padding:0; background:var(--bg); color:var(--text-primary); font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"PingFang SC","Noto Sans SC","Helvetica Neue",Arial,sans-serif; }
+  body { max-width:860px; margin:0 auto; padding:40px 24px 80px; }
+  h1 { font-size:26px; font-weight:650; margin:0 0 12px; letter-spacing:-0.02em; line-height:1.25; }
+  h2 { font-size:19px; font-weight:600; margin:36px 0 12px; padding-top:8px; border-top:1px solid var(--stroke-tertiary); }
+  h2:first-of-type { border-top:none; margin-top:28px; }
+  h3 { font-size:15px; font-weight:600; margin:20px 0 8px; }
+  p { margin:0 0 12px; }
+  .meta { font-size:13px; color:var(--text-secondary); padding:14px 16px; border-radius:8px; background:var(--fill-tertiary); border:1px solid var(--stroke-secondary); margin-bottom:24px; }
+  .meta a { color:var(--accent); }
+  .tldr { padding:16px 18px; border-radius:8px; background:var(--info-bg); border-left:4px solid var(--accent); margin-bottom:18px; }
+  .tldr strong { display:block; margin-bottom:6px; font-size:13px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-secondary); }
+  ul { margin:0 0 14px; padding-left:1.25em; } li { margin-bottom:6px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin:12px 0 18px; }
+  th,td { border:1px solid var(--stroke-secondary); padding:8px 10px; text-align:left; vertical-align:top; }
+  th { background:var(--fill-secondary); font-weight:600; }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; padding:1px 5px; background:var(--fill-secondary); border-radius:3px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:4px; margin-right:6px; background:var(--fill-secondary); color:var(--text-secondary); }
+  .highlight { background:var(--success-bg); padding:2px 4px; border-radius:3px; }
+  .col-a { color:var(--accent); font-weight:600; }
+  .footnote { font-size:12px; color:var(--text-tertiary); margin-top:40px; }
+  @media print { body { max-width:none; padding:16px; } h2 { break-after:avoid; } table { font-size:11px; } }
+</style>
+</head>
+<body>
+
+<h1>AutoOverlap:chunk 抽象 + 自动 kernel 内细粒度通信计算重叠编译器</h1>
+
+<div class="meta">
+  <span class="tag">arXiv 2026-01</span>
+  <span class="tag">UC San Diego + Meta</span>
+  <span class="tag">Triton 源到源编译器</span><br><br>
+  <strong>论文:</strong> <a href="https://arxiv.org/abs/2601.20595">arXiv:2601.20595</a><br>
+  <strong>英文题名:</strong> AutoOverlap: Enabling Fine-Grained Overlap of Computation and Communication with Chunk-Based Scheduling<br>
+  <strong>笔记路径:</strong> <code>slab/papers/autooverlap/README.md</code>
+</div>
+
+<div class="tldr">
+  <strong>TL;DR</strong>
+  提出 <strong>communication chunk 抽象</strong>——把通信粒度从 kernel 结构和后端机制解耦,让 chunk 级 overlap plan 可从别的编译器移植/用户手写/模板实例化。基于 Triton 的<strong>源到源编译器 + runtime</strong>,自动把「本地 Triton kernel + chunk 调度」变成融合分布式 kernel,做三维自适应(<strong>通信后端 copy-engine/TMA/load-store · chunk 大小 · intra-chunk tile 顺序</strong>)+ autotuning。平均 <span class="highlight">1.3×</span>、最高 <span class="highlight">4.7×</span>。这批里唯一的<strong>编译器/自动化</strong>视角。
+</div>
+
+<h2>1. 问题</h2>
+<p>现有分布式编译器(Alpa/Mercury)只在 kernel/stream 级 overlap:每通信阶段一次 launch + kernel 边界 device-wide 同步 + wave quantization + 末尾无 overlap 的通信尾巴。手写细粒度(Flux/COMET/FlashOverlap/Triton-Distributed)虽好但每算子/架构/硬件都要专家手工,难泛化。</p>
+
+<h2>2. 核心方法</h2>
+<ul>
+  <li><strong>Chunk 抽象:</strong> 一个 chunk = 某通信操作关联的逻辑数据 + 产/消它的 tile;暴露 chunk 大小/后端/tile 顺序少数 knob。</li>
+  <li><strong>源到源 Triton 编译器 + runtime:</strong> 吃标注 kernel + chunk plan,重排 tile 跟随通信进度,无缝替换 PyTorch distributed 算子。</li>
+  <li><strong>三维自适应:</strong> ① 通信后端(copy engine ~400GB/s 但 host launch+连续;TMA 16 SM 300+GB/s 但限节点内;load-store 灵活可 in-network reduce 但吃 SM)按 chunk 选;② chunk 大小平衡吞吐 vs 同步;③ intra-chunk tile 顺序跟踪通信进度保局部性。</li>
+</ul>
+
+<h2>3. 主要实验</h2>
+<table>
+  <thead><tr><th>维度</th><th>结果</th></tr></thead>
+  <tbody>
+    <tr><td>端到端平均加速</td><td><strong>1.3×</strong></td></tr>
+    <tr><td>最高</td><td><strong>4.7×</strong></td></tr>
+    <tr><td>定位</td><td>Chunk 粒度 + Compute/Comm/Schedule 全 Auto(vs Flux/COMET tile/chunk-manual)</td></tr>
+  </tbody>
+</table>
+
+<h2>4. 与 monolith-moe / rocmoe 的对照(重点)</h2>
+<p>唯一的编译器/自动化视角,对照我们「全手写 HIP super-kernel」的另一极。</p>
+<table>
+  <thead><tr><th>AutoOverlap</th><th class="col-a">我们</th><th>关系</th></tr></thead>
+  <tbody>
+    <tr><td><strong>chunk 抽象</strong>解耦通信粒度与 kernel 结构</td><td>手写死 chunk/block 粒度</td><td>⭐ 参数化成 chunk plan → 可 autotune/移植</td></tr>
+    <tr><td><strong>通信后端按 chunk 自适应</strong>(copy engine/TMA/load-store)</td><td>手写 HIP IPC 单一机制 + DTOLDS</td><td>⭐ MI355X 上 XGMI DMA vs async-copy-to-LDS vs load/store 按 chunk 选</td></tr>
+    <tr><td>自适应 chunk 大小 + tile 调度</td><td>固定 tile / <code>kSubWGs</code></td><td>与 UniEP autotuner 呼应</td></tr>
+    <tr><td>源到源编译器 + PyTorch distributed 无缝</td><td>全手写 HIP C++</td><td>⚠️ 手写换极致性能,AutoOverlap 自动化换泛化</td></tr>
+  </tbody>
+</table>
+<h3>结论</h3>
+<ul>
+  <li><strong>chunk 抽象</strong>给了把 super-kernel「参数化 + autotune」的框架思路:现在 chunk 粒度/搬运机制写死在 HIP,抽象成 chunk plan 就能自动搜最优而非人工返工。</li>
+  <li><strong>通信后端按 chunk 自适应</strong>在 AMD 尤值得试:MI355X 有 XGMI DMA / async direct-to-LDS / load-store 三条搬运路,当前基本只用一条,按 chunk 特性选后端可能是免费 overlap 增益。</li>
+</ul>
+
+<h2>5. 局限</h2>
+<ul>
+  <li>建在 Triton 源到源(表达力/性能边界内);评测多为常见算子级;TMA 后端限节点内点对点。</li>
+</ul>
+
+<p class="footnote">本页由 <code>slab/papers/autooverlap/README.md</code> 导出 · arXiv:2601.20595 · 仅供内部阅读</p>
+
+</body>
+</html>
