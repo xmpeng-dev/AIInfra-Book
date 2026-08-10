@@ -5,6 +5,8 @@ description: Compare a Primus backend against an upstream repository or referenc
 
 # Backend Gap Report & Shared Dashboard
 
+> **Before assessing integration coupling**, consult `slab/knowledge/systems/primus-pipeline-runtime-megatron-integration.md` — it walks the plan→adapter→executor→handler chain and names the actual binding points (`get_forward_backward_func`, spec provider, collective backend), so coupling can be reported per seam instead of per file.
+
 Use this skill when the user asks to compare a Primus backend with upstream code and wants stable deliverables instead of ad hoc notes, **or** when integrating a different content type (e.g. weekly engineering reports) into the shared Primus engineering dashboard that lives under `tools/backend_gap_report/`.
 
 ## Default Outputs

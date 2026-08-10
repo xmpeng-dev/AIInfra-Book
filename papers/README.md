@@ -4,6 +4,8 @@
 slug 是 kebab-case;年份只在需要消歧义时加。
 
 > 100+ 篇论文的全景分类索引在 [`../knowledge/moe/paper-landscape.md`](../knowledge/moe/paper-landscape.md);
+> **arXiv 2025–2026 训练/推理优化速查**见 [`../knowledge/systems/training-optimization-landscape-2026.md`](../knowledge/systems/training-optimization-landscape-2026.md);
+> **2026-08 增量扫描（27 篇待读 + 本轮精读的 5 篇）**见 [`../knowledge/systems/arxiv-digest-2026-08.md`](../knowledge/systems/arxiv-digest-2026-08.md);
 > 这里只列**已有详细笔记**的论文。
 
 ## 论文清单
@@ -27,13 +29,22 @@ slug 是 kebab-case;年份只在需要消歧义时加。
 | FlowMoE | NeurIPS'25 | MoE 流水线 | 统一流水线调度 + chunk 优先级,-57% 训练时间 | [`flowmoe.md`](./flowmoe.md) |
 | Megatron-Core MoE | -- | 工程参考 | NVIDIA 官方 MoE 实现细节(grouped GEMM / token dispatcher / load balance) | [`megatron-core-moe.md`](./megatron-core-moe.md) |
 | veScale FSDP | -- | 分布式训练 | veScale 的 FSDP 设计与实现要点 | [`vescale-fsdp.md`](./vescale-fsdp.md) |
+| DMuon | arXiv'26 | 分布式优化器 | Owner-centric Muon + Gram SYRK NS + MILP LB,FSDP2 drop-in 3 行,端到端 avg +2% vs AdamW / optim 6.85–163× vs Muon-AG | [`dmuon.md`](./dmuon.md) |
+| MatrixFSDP | arXiv'26 | 分布式优化器 | 改 ZeRO-3 分片放置(每矩阵一个 owner 持整块)让 backward 归约天然落在 owner,optim step 零矩阵集合通信;64×A100 optim 4.2×→54.6× / E2E 1.37×→2.15×;不支持 TP、未谈 MoE | [`matrixfsdp.md`](./matrixfsdp.md) |
+| Tessera | OSDI'26 | 异构 MoE 流水并行(阿里) | 切分与 overlap 调度是循环依赖:先真机 profile 每个 overlap pair 的 post-overlap cost,再用 MILP 按实测边代价选切分,外加 DBO 用路由元数据预测气泡填 Wgrad;Qwen3/Qwen3-Next 生产 4,096–12,288 GPU **+20%~33%**,万亿 **39% MFU**;**§5 工程经验含金量最高**——生产里否掉了 Comet 式融合(后端耦合)、**EP 通信 kernel 占 ~20 SM 致 10–20% 减速**、代价模型尾部误差 15% 会翻转 MILP 排序 | [`tessera.md`](./tessera.md) |
+| HyperParallel-MoE | arXiv'26 | MoE 训练(昇腾) | 算子串行→编译期静态调度的 tile 级 AIC/AIV 异构 taskflow,AIV 驱动单边通信 + SSC 离线编译,单次 kernel launch;Dispatch-to-Combine 1.49–1.58× / E2E 1.08–1.09×;**静态 vs 动态派发 0.1 vs 2.36 µs/任务**,ROCmoe P4 的量化论据 | [`hyperparallel-moe.md`](./hyperparallel-moe.md) |
 
 ### 推理系统
 
 | Paper | 发表 | Topic | 一句话结论 | File |
 |---|---|---|---|---|
+| Perseus | arXiv'26 | 多节点 megakernel 通信 | proxy RDMA 上 `put-with-signal` 展开成 `Put→Fence→Signal`,每次 fence 排空 NIC 流水;96 并发/8 节点吞吐掉到 2%;decoupled signaling(每 PE 一个 fence)+ NIC 侧保序,Libfabric 10.3× / IBRC 2.47×,proxy 反超 IBGDA 1.2×;**节点内无此问题** | [`perseus.md`](./perseus.md) |
+| X-Stage | arXiv'26 | 发射后流水阶段建模 | remote store 发出到远端可见之间存在软件可见的 X-Stage;三参数 Burst–Gap 模型 `(T_iss⁰, R=717 GB/s, Q=4.25 MiB)` 预测背压拐点;据此重排 DeepGEMM MegaMoE 的 L1/L2 交错,84 配置几何均值 1.18× / 最大 1.62× / 最差 0.94×(L2 局部性反噬) | [`x-stage.md`](./x-stage.md) |
+| ExpertPlex | arXiv'26 | MoE 服务(自适应 APK) | 共享专家 + 分离 attention;Adaptive Persistent Kernel 在 tile 边界抢占(界 = 1 tile + 1 检查 epoch,与序列长无关),抢占决策沿 system→device→DSMEM→warp 传播;vs Green Context prefill 只慢 1.12×(对方 4.07×);goodput 2.01× vs PDD;**唯一质疑静态调度的一篇,但只反固定空间划分** | [`expertplex.md`](./expertplex.md) |
 | Fleet | arXiv'26 | Chiplet megakernel | Chiplet-task + 协作 L2 tiling,MI350 decode 1.3–1.5× vs vLLM eager | [`fleet.md`](./fleet.md) |
+| MoE Tile Signaling | ICPP'26 | MoE 推理 overlap | remote-owner layout + persistent producer/consumer + tile epilogue signal,combine A2A 与 GEMM overlap,4×A100 最高 2.64× E2E / 2.74× MoE layer vs FasterMoE | [`moe-tile-signaling.md`](./moe-tile-signaling.md) |
 | MegaScale-Infer | SIGCOMM'25 | MoE 推理 | 分离式 EP,Prefill/Decode/Expert 解耦,3.2× 吞吐 / 55% 成本↓ | [`megascale-infer.md`](./megascale-infer.md) |
+| SnapMLA | arXiv'26 | MLA FP8 解码 | RoPE-aware per-token 量化(RoPE 保 BF16)+ 预缩放域对齐 + S_V 折进 P 由 softmax 隐式反量化,8×Hopper 最高 1.91× 吞吐(主要来自 KV cache 减半后 batch 变大) | [`snapmla.md`](./snapmla.md) |
 | KTransformers | SOSP'25 | 异构推理 | CPU+GPU 异构推理,$5K 跑 DeepSeek-V3 671B | [`ktransformers.md`](./ktransformers.md) |
 
 ### 架构创新
@@ -42,6 +53,12 @@ slug 是 kebab-case;年份只在需要消歧义时加。
 |---|---|---|---|---|
 | OmniMoE | arXiv'26 | MoE 路由 | 原子专家 + 笛卡尔积路由 O(√N),10.9× 推理加速 | [`omnimoe.md`](./omnimoe.md) |
 | LatentMoE | -- | MoE 架构 | Latent space MoE 设计要点 | [`latent-moe.md`](./latent-moe.md) |
+
+### 编译器 / 内核生成
+
+| Paper | 发表 | Topic | 一句话结论 | File |
+|---|---|---|---|---|
+| AutoMegaKernel | arXiv'26 | megakernel 合成 + 静态校验 | HF Llama → 单个常驻 cooperative kernel,零手写 CUDA;frozen schedule-IR 验证器用 9 条静态图检查证无死锁/无竞争,7160 个对抗调度**零假接受**;同源重定向 sm_80/90/120;**负面结果更有用**:瓶颈是每 tile 跨 SM 同步,且在带宽最高的训练级芯片上最严重 | [`automegakernel.md`](./automegakernel.md) |
 
 ### 其他
 

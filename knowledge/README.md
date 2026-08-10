@@ -17,7 +17,7 @@ agent 在写代码、设计、回答问题时,默认先 `Grep` 这里。
 | [`systems/`](./systems/README.md) | TorchTitan / Megatron-Core / Primus 等训练框架的工程要点、跨版本 diff、大规模训练稳定性 | 集成 backend、debug 跨版本回归、做架构选型 |
 | [`moe/`](./moe/README.md) | MoE 的算法、数据流、并行方案、论文全景图、研究方向 | 实现 MoE 训练系统、设计新的并行/通信策略、写 MoE 论文笔记前的 sanity check |
 | [`kernels/`](./kernels/README.md) | GEMM / FP8 / comm-compute overlap 等可复用 kernel know-how | 写或优化 HIP/CUDA kernel |
-| [`libraries/`](./libraries/README.md) | 第三方算子库(CK / AITER / hipBLAS / primus-turbo 等)的设计蒸馏 | 选库、读上游代码前的 sanity check、跨库 pattern 比较 |
+| [`libraries/`](./libraries/README.md) | 第三方算子库(CK / AITER / hipBLAS / primus-turbo)的设计蒸馏,以及不可落地但值得参考的外部实现(mKernel / avelang 等 kernel DSL 与多卡融合参考) | 选库、读上游代码前的 sanity check、跨库 pattern 比较、评估 kernel DSL / 编译器路线 |
 | [`pilot/`](./pilot/README.md) | Primus Pilot v2 自动调优系统的设计文档(workflow / state machine / sub-skills) | 实现 / 调试 Pilot,或想理解它的搜索策略 |
 
 ## 编辑约定
