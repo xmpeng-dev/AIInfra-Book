@@ -256,7 +256,7 @@ python3 /tmp/org_resolve.py
 
 **已知局限：**
 - 约 113/854 篇无 HTML 渲染（仅 PDF），作者单位无法自动提取，这部分靠 abs 页人工补。
-- §1–§2 只覆盖 arXiv，而**顶会论文与厂商技术报告不一定进 arXiv**：阿里 Tessera（OSDI '26）、DeepSeek-V4 基础设施章节、Kimi K3 的 MoonEP、美团 LongCat-2.0 都被这一步系统性漏掉，全靠 §6 的开源/博客检索补回。只扫 arXiv 会**结构性低估中国大厂的生产级工作**。
+- §1–§2 只覆盖 arXiv，而**顶会论文与厂商技术报告不一定进 arXiv**：阿里 Tessera（OSDI '26）、DeepSeek-V4 基础设施章节、Kimi K3 的 MoonEP、美团 LongCat-2.0 都被这一步系统性漏掉，全靠 §6 的开源/博客检索补回。只扫 arXiv 会**结构性低估中国大厂的生产级工作**。→ 补救办法见 [`paper-venues-checklist.md`](./paper-venues-checklist.md)：按会议直接检索，Tier 0 那批（OSDI/SOSP/EuroSys/ATC/NSDI/ASPLOS/SC/FAST）就是 arXiv 覆盖不到的部分。
 - 单位归属按论文作者块判定，因此"某公司员工的个人研究"与"公司项目产出"无法严格区分（UCCL-Zip 即为一例，已手工排除）。
 
 ---
