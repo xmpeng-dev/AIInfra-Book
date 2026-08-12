@@ -18,6 +18,7 @@
 | [`monolith-ep/`](./monolith-ep/) | MoE expert parallel super-kernel | placeholder — 待启动 |
 | [`rocmoe/`](./rocmoe/README.md) | MoE super-kernel v3：Layout-P + receiver-pull + MonolithEP hot loop (MI355X) | active — 设计冻结 (M0 待启动) |
 | [`megaattn/`](./megaattn/README.md) | DSA attention megakernel：indexer + top-k + sparse MLA 三段融合 (MI355X) | active — v1 设计成文，M0 摸底待启动 |
+| [`hk-attn-bwd/`](./hk-attn-bwd/README.md) | HipKittens attention backward 切入 Primus-Turbo (GQA, MI355X) | **on-hold** — 三轮证据后判定边际价值低（AITER 已达 902–1047；HK 跑不了 MLA；turbo≈TE），仅剩两项收口动作 |
 | [`mlperf-llama/`](./mlperf-llama/README.md) | Llama-2-70B LoRA SFT, NeMo vs Primus | active — DataLoader fix + `fp8_param` A/B 待跑 |
 | [`pilot/`](./pilot/README.md) | Primus Pilot v2: agentic training-tuning system | active — bootstrap 工具落地,BASELINE 入口待排查 |
 

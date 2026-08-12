@@ -58,6 +58,8 @@ slug 是 kebab-case;年份只在需要消歧义时加。
 
 | Paper | 发表 | Topic | 一句话结论 | File |
 |---|---|---|---|---|
+| HipKittens | MLSys'26 | AMD kernel 原语(Stanford+AMD) | ⭐ tile 抽象可移植到 AMD,但**实例化算法必须重做**。**wave specialization 在 AMD 是负优化**(寄存器静态均分→producer 白占寄存器压低输出 tile:0-producer/256×256 得 1610 vs 4-producer/128×256 得 893 TFLOPS);替代方案 8-wave ping-pong(48 行热循环即追平裸汇编)/4-wave interleave;register pinning 绕过 HIPCC +20%;chiplet grid swizzle +19%;**附录逆出了 CDNA ISA 未文档化的 LDS phase/bank 表**;已产品化进 AITER | [`hipkittens.md`](./hipkittens.md) · [全文中译](./hipkittens-zh.md) |
+| Swizzled Head-first Attention | arXiv'26 | AMD chiplet NUMA 调度(Duke+AMD) | FA2 的 workgroup 网格重排,把一个 head 的全部 Q-block 锁到单个 XCD 以复用私有 L2;提出 **ACC(共享同一份 K/V 的 WG 组)** 抽象;MI300X 上 MHA 最高 **+50%**,L2 命中 **90–96% vs block-first ≈1%**——**AITER 现用的 Swizzled Block-first 在多头+长序列下几乎全 miss**;但 GQA 上无优势(8 KV head 恰等于 8 XCD)、backward 仅 1.10×、**causal 下亏 7%**(FlyDSL 实测,论文未提);全文归一化无绝对 TFLOPS;**AMD 已实现进 FlyDSL** | [`swizzled-head-first-attention.md`](./swizzled-head-first-attention.md) |
 | AutoMegaKernel | arXiv'26 | megakernel 合成 + 静态校验 | HF Llama → 单个常驻 cooperative kernel,零手写 CUDA;frozen schedule-IR 验证器用 9 条静态图检查证无死锁/无竞争,7160 个对抗调度**零假接受**;同源重定向 sm_80/90/120;**负面结果更有用**:瓶颈是每 tile 跨 SM 同步,且在带宽最高的训练级芯片上最严重 | [`automegakernel.md`](./automegakernel.md) |
 
 ### 其他
