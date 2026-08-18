@@ -33,6 +33,7 @@ slug 是 kebab-case;年份只在需要消歧义时加。
 | MatrixFSDP | arXiv'26 | 分布式优化器 | 改 ZeRO-3 分片放置(每矩阵一个 owner 持整块)让 backward 归约天然落在 owner,optim step 零矩阵集合通信;64×A100 optim 4.2×→54.6× / E2E 1.37×→2.15×;不支持 TP、未谈 MoE | [`matrixfsdp.md`](./matrixfsdp.md) |
 | Tessera | OSDI'26 | 异构 MoE 流水并行(阿里) | 切分与 overlap 调度是循环依赖:先真机 profile 每个 overlap pair 的 post-overlap cost,再用 MILP 按实测边代价选切分,外加 DBO 用路由元数据预测气泡填 Wgrad;Qwen3/Qwen3-Next 生产 4,096–12,288 GPU **+20%~33%**,万亿 **39% MFU**;**§5 工程经验含金量最高**——生产里否掉了 Comet 式融合(后端耦合)、**EP 通信 kernel 占 ~20 SM 致 10–20% 减速**、代价模型尾部误差 15% 会翻转 MILP 排序 | [`tessera.md`](./tessera.md) |
 | HyperParallel-MoE | arXiv'26 | MoE 训练(昇腾) | 算子串行→编译期静态调度的 tile 级 AIC/AIV 异构 taskflow,AIV 驱动单边通信 + SSC 离线编译,单次 kernel launch;Dispatch-to-Combine 1.49–1.58× / E2E 1.08–1.09×;**静态 vs 动态派发 0.1 vs 2.36 µs/任务**,ROCmoe P4 的量化论据 | [`hyperparallel-moe.md`](./hyperparallel-moe.md) |
+| MXFP4 原生预训练 | arXiv'26 | FP4 训练数值(AMD) | Penn State + AMD;MI355X **原生** MXFP4 逐段打开,到 ppl 3.3 的 token 开销 Fprop 8–9% → +Dgrad 10–11% → **+Wgrad 跳 26–27%**;随机舍入与随机 Hadamard 在全流水**不收敛**,**确定性** Hadamard 打回 8–9%(H16/H32 同尺寸对照,已排除"旋转尺寸"这个变量);单步吞吐 +20% 但**端到端只剩 +9–10%**——FP4 收益被稳定性闸住;**dense-only,未碰 MoE/grouped GEMM** | [`mxfp4-pretraining.md`](./mxfp4-pretraining.md) · [全文中译](./mxfp4-pretraining-zh.md) |
 
 ### 推理系统
 
@@ -46,6 +47,7 @@ slug 是 kebab-case;年份只在需要消歧义时加。
 | MegaScale-Infer | SIGCOMM'25 | MoE 推理 | 分离式 EP,Prefill/Decode/Expert 解耦,3.2× 吞吐 / 55% 成本↓ | [`megascale-infer.md`](./megascale-infer.md) |
 | SnapMLA | arXiv'26 | MLA FP8 解码 | RoPE-aware per-token 量化(RoPE 保 BF16)+ 预缩放域对齐 + S_V 折进 P 由 softmax 隐式反量化,8×Hopper 最高 1.91× 吞吐(主要来自 KV cache 减半后 batch 变大) | [`snapmla.md`](./snapmla.md) |
 | KTransformers | SOSP'25 | 异构推理 | CPU+GPU 异构推理,$5K 跑 DeepSeek-V3 671B | [`ktransformers.md`](./ktransformers.md) |
+| UBEP | SIGCOMM'26 | MoE EP 通信库(超节点) | 南大 + 华为;BSP 阶段+全局 barrier → 依赖驱动细粒度任务,**Data-as-Flag** 用 512B 原子写把 flag 融进 payload(TFF/DC/**SP 哨兵轮询**三变体),层次化 token 调度同时均衡负载与 hop 距离(Two-Hop 延迟 = 本地 **11.5×**);CM384/256 die 上 dispatch ↓34.7–52.4% / 带宽 +35.3–40.8% / P99 TPOT ↓11.1%;**MoE 通信占 per-token 延迟 ~50% 但只占硬件执行时间 ~20%**——"重排执行而非加带宽"的第三方证据;§6 点名批评 fused persistent kernel 的刚性资源划分与软件轮询,是 ROCmoe 路线要正面回答的一篇 | [`ubep.md`](./ubep.md) |
 
 ### 架构创新
 

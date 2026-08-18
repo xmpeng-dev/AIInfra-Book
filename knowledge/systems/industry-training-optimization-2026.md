@@ -13,15 +13,15 @@
 
 **如果只记七件事：**
 
-1. **FP4 已经从"能不能推理"变成"能不能训练"，而且战线推到了 RL。** 华为把 HiFloat4 从预训练一路做到**端到端 FP4 RL 后训练**（rollout + training 双侧 4-bit），阿里 Qwen 做 NVFP4 rollout，蚂蚁重新审视 E2M1 的收缩偏差，腾讯连出三篇 FP4/FP8 量化，AMD 在 MI355X 原生 FP4 上定位到 **Wgrad 是发散主因**。这是目前投入最密集的一条线。
+1. **FP4 已经从"能不能推理"变成"能不能训练"，而且战线推到了 RL。** 华为把 HiFloat4 从预训练一路做到**端到端 FP4 RL 后训练**（rollout + training 双侧 4-bit），阿里 Qwen 做 NVFP4 rollout，蚂蚁重新审视 E2M1 的收缩偏差，腾讯连出三篇 FP4/FP8 量化，Penn State + AMD 在 MI355X 原生 FP4 上定位到 **Wgrad 是发散主因**。这是目前投入最密集的一条线。
 2. **RL 后训练正在长成独立的一套系统栈。** 阿里 RollArt、NVIDIA Molt、腾讯 ForeMoE / shared-prefix 复用，都在解同一类问题：rollout 与 training 阶段负载特性完全不同，不能沿用预训练的调度假设。
-3. **超节点（rack-scale / supernode）正在逼各家重写通信库。** 华为 StrataCL + UBEP（SIGCOMM'26）针对 CloudMatrix384，NVIDIA 给 NCCL 加 EP 专用 API，Meta 为 MTIA 300 自研 HCCL，Intel 出 PCCL。NCCL/RCCL 的"buffer-centric + 通用 collective"抽象在超节点上被集体质疑。
+3. **超节点（rack-scale / supernode）正在逼各家重写通信库。** 华为 StrataCL、南大与华为合作的 UBEP（SIGCOMM'26）针对 CloudMatrix384，NVIDIA 给 NCCL 加 EP 专用 API，Meta 为 MTIA 300 自研 HCCL，Intel 出 PCCL。NCCL/RCCL 的"buffer-centric + 通用 collective"抽象在超节点上被集体质疑。
 4. **弹性训练的实现路径从 checkpoint 转向直接状态迁移。** 华为/中科院 ETC 和无问芯穹 DynaTrain 都绕开存储持久化走 P2P 直传，DynaTrain 把 235B MoE 的并行切换压到 **4.36 秒**。
 5. **Meta 罕见地把训练硬件叙事摆到了台前。** MTIA 300 是 Meta 第一颗把后端网络集成进封装的芯片，配套 HCCL 用**编译式通信模型**把 collective 完全卸载到片上 message engine；且 MTIA 300 **已量产用于排序/推荐训练**。
 6. **Muon 从算法选择变成了系统约束。** 字节、DeepSeek、月之暗面、微软、NVIDIA、AMD 的训练栈在这半年里全部接入 Muon。它要求分布式框架保住参数的 2D 结构，与现有"把梯度当扁平 buffer"的设计直接冲突（详见 [§6.5](#65-两侧共同的新主线muon-成为跨栈共识)）。
 7. **低精度的战场已从 GEMM 转到参数存储与通信。** NVIDIA `--fp4-param-gather` 让分片以 native NVFP4 packed 4-bit 直接 all-gather，**前向路径零 per-microbatch 量化**；这是一条独立于算力的收益来源，也是 AMD 侧最明确的差距。
 
-**最值得我们细读的三篇：** Meta HCCL（[2608.00358](https://arxiv.org/abs/2608.00358)）、华为 UBEP（[2607.06202](https://arxiv.org/abs/2607.06202)）、NVIDIA Megatron-Core MoE 训练报告（[2603.07685](https://arxiv.org/abs/2603.07685)）。
+**最值得我们细读的三篇：** Meta HCCL（[2608.00358](https://arxiv.org/abs/2608.00358)）、UBEP（[2607.06202](https://arxiv.org/abs/2607.06202)，南大 + 华为）、NVIDIA Megatron-Core MoE 训练报告（[2603.07685](https://arxiv.org/abs/2603.07685)）。
 
 **一处必须自己拿主意的开放问题：** FP4 训练里随机性到底有没有用——NVIDIA 默认开 stochastic rounding + RHT，AMD 两次明确说它稳不住 Wgrad。两边都是生产级证据，没有公开材料给出定论。见 [§6.3](#63-两个来源的交叉印证与冲突)。
 
@@ -72,13 +72,13 @@
 |------|-------|----------|------|----------|
 | **HiFloat4 预训练** | [2604.08826](https://arxiv.org/abs/2604.08826) | 华为 | HiF4 格式 vs MXFP4 的大规模训练对比，linear + expert GEMM **全 FP4** | 相对误差控制在全精度 **1%** 内 |
 | **HiFloat4 RL 后训练** | [2607.26515](https://arxiv.org/abs/2607.26515) | 华为 | **首个端到端 FP4 RL 后训练**（rollout+training 双侧、含反向）。核心发现：主要退化源不是训练侧量化，而是 **rollout 激活量化**；只把训练侧恢复高精度反而更差（rollout-training 失配）。用 Rollout-ResQ 残差修正 | 与 BF16 差距 **4.9% → 1.1%**；MXFP4 上 13.6% → 5.3% |
-| **UBEP** | [2607.06202](https://arxiv.org/abs/2607.06202) | 华为 + 南京大学（**SIGCOMM'26**） | 为生产超节点（NVL72/576、CloudMatrix384）重构 EP 通信库；指出统一地址空间+高带宽 fabric 并不自动带来稀疏 MoE 通信收益，瓶颈在**执行严格串行化**等三点 | ⭐⭐ 强烈建议精读 |
+| **UBEP** | [2607.06202](https://arxiv.org/abs/2607.06202) | **南京大学 + 华为**（**SIGCOMM'26**；一作与第一通讯（jzheng@nju.edu.cn）在南大，华为 10 位作者并提供 CM384 平台与第二通讯——是联合工作，不是华为主导） | 为生产超节点（NVL72/576、CloudMatrix384）重构 EP 通信库；指出统一地址空间+高带宽 fabric 并不自动带来稀疏 MoE 通信收益，三个瓶颈：**BSP 粗粒度编排造成执行严格串行化**、同步开销不随带宽一起下降、**距离无关调度**导致的负载倾斜 | A2A 延迟 ↓ 至多 **52.4%**；同硬件同拓扑对 CANN EP 带宽 **+35.3%–40.8%**（隔离出纯算法收益）；端到端 P99 TPOT ↓ 11.1%。⭐⭐ 强烈建议精读，但**注意全文只评测推理**（CM384 上 256 die，vLLM-Ascend 解码 / TPOT），**无训练实验** |
 | **StrataCL** | [2607.26444](https://arxiv.org/abs/2607.26444) | 华为 | **fabric-native 零冗余**通信库：现有库是 buffer-centric（用户 buffer 与通信 buffer 分离，导致多余拷贝或昂贵注册），改为 **registration-on-allocation** 实现用户 buffer 直通 |
 | **CommFuse** | [2604.24013](https://arxiv.org/abs/2604.24013) | 华为 Toronto Ascend Team | 用**分解后的 P2P** 替代 reduce-scatter / all-gather，消除切分式 overlap 的尾延迟 | 对 TPSP / UP 均适用 |
 | **ETC（弹性状态迁移）** | [2607.04749](https://arxiv.org/abs/2607.04749) | 中科院计算所 + 华为 | 抛弃 checkpoint，靠**状态局部性 + P2P 直传**做混合并行的在线重配；已集成进 Megatron-LM | 迁移开销降 **2.33×–6.37×** |
 | **HyperParallel-MoE** | [2605.23764](https://arxiv.org/abs/2605.23764) | 中科大 + 华为 | AIC/AIV 异构核交错调度 + 设备侧单边通信 | 已有精读笔记 |
 
-**读法：** 华为这套组合拳的逻辑非常完整：**格式（HiF4）→ 预训练 → RL 后训练 → 超节点通信库（UBEP/StrataCL）→ 弹性（ETC）**。对我们最有价值的是两点：(1) FP4 RL 的失败模式定位到 rollout 侧而非训练侧，这个结论跨硬件通用；(2) UBEP/StrataCL 都在说同一件事——**超节点的通信库不能沿用 NCCL 那套 buffer 语义**。
+**读法：** 华为这套组合拳的逻辑非常完整：**格式（HiF4）→ 预训练 → RL 后训练 → 超节点通信库（UBEP/StrataCL）→ 弹性（ETC）**（其中 UBEP 是南大 + 华为的联合工作，一作在南大，别当成纯华为产出）。对我们最有价值的是三点：(1) FP4 RL 的失败模式定位到 rollout 侧而非训练侧，这个结论跨硬件通用；(2) UBEP/StrataCL 都在说同一件事——**超节点的通信库不能沿用 NCCL 那套 buffer 语义**；(3) UBEP 的 profiling 给了一个可以直接引用的数字：MoE 通信占每 token 延迟约 **50%**，但只占**实际硬件执行时间的约 20%**，其余是依赖阻塞与运行时开销——这是"该重排执行、而不是加带宽"这条路线的第三方证据。
 
 ### 1.5 其他国内单位
 
@@ -124,12 +124,12 @@
 
 | 工作 | arXiv | 单位构成 | 核心 |
 |------|-------|----------|------|
-| **MXFP4 原生硬件预训练** | [2605.09825](https://arxiv.org/abs/2605.09825) | Penn State + **AMD** | 在 **MI355X 原生 MXFP4**（非软件模拟）上逐段打开 FP4：结论是 **Wgrad 量化才是收敛退化主因**，Fprop/Dgrad 影响温和；随机舍入和随机 Hadamard 旋转都救不回来，**确定性 Hadamard 旋转**才能恢复稳定 |
+| **MXFP4 原生硬件预训练** | [2605.09825](https://arxiv.org/abs/2605.09825) | Penn State + **AMD**（一作 Musa Cim 与导师 Kandemir 在 psu.edu，另 5 位作者 @amd.com；引用的是 **v4，2026-08-12** 修订） | 在 **MI355X 原生 MXFP4**（非软件模拟）上逐段打开 FP4，口径是 Llama 3.1-8B / MLPerf C4 / 验证 ppl 3.3 的**到点 token 开销**：Fprop 仅 8–9%、+Dgrad 10–11%、**+Wgrad 跳到 26–27%** —— 所以 **Wgrad 量化才是收敛退化主因**。随机舍入与随机 Hadamard 在全流水下**直接不收敛**，**确定性 Hadamard 把开销打回 8–9%**。这个对比是**同尺寸受控**的：确定性 H16 与 H32 都能救，随机 H16 不行，所以变量是随机化本身而不是旋转尺寸 |
 | Eidola | [2606.12638](https://arxiv.org/abs/2606.12638) | Wisconsin + **AMD Research** | 建模多 GPU 通信流量；重点是 kernel fusion 与 overlap 反而制造了**难以建模的不规则瞬态流量** |
 | Kerncap | [2605.03208](https://arxiv.org/abs/2605.03208) | AMD 相关 | AMD GPU 上的**自动 kernel 抽取与隔离**，免去手工重建 build flag / dispatch 配置 |
 | dMX | [2606.04115](https://arxiv.org/abs/2606.04115) | AMD 相关 | 可微的混合精度位宽分配 |
 
-**读法：** MXFP4 那篇是我们这条线上**最该立刻读**的——它是少数在真实 MI355X 原生 FP4 上做的受控实验，而且结论是可操作的：**先保住 Wgrad，Fprop/Dgrad 可以激进**。Kerncap 则是现成的工程工具，能省掉不少 kernel 调优的隔离成本。
+**读法：** MXFP4 那篇是我们这条线上**最该立刻读**的——它是少数在真实 MI355X 原生 FP4 上做的受控实验，而且结论是可操作的：**先保住 Wgrad，Fprop/Dgrad 可以激进**。它还算了一笔容易被忽略的账：MXFP4 + H16 的**单步吞吐 +20%**，扣掉 8–9% 的 token 开销后**端到端只剩 +9–10%**；而不治 Wgrad 的话，26–27% 的 token 开销直接把这 20% 吃干。**FP4 的收益是被稳定性闸住的，不是自动到手的**——这个"闸"的说法比单看 Wgrad 结论更值得带进我们自己的 FP4 计划。另外论文自己留了话：这套配方**不保证可迁移**（换模型、换数据、换微调方式都可能失效），复现时别当通用结论。Kerncap 则是现成的工程工具，能省掉不少 kernel 调优的隔离成本。
 
 ### 2.4 Microsoft + OpenAI —— 十万卡网络是联合叙事
 
@@ -164,7 +164,7 @@
 
 | 谁 | 结论 |
 |----|------|
-| AMD + Penn State | **Wgrad 是发散主因**；确定性 Hadamard 旋转有效，随机化无效 |
+| Penn State + AMD | **Wgrad 是发散主因**（到点 token 开销 8–9% → **26–27%**）；确定性 Hadamard 有效（打回 8–9%），随机化无效——同尺寸 H16 下已排除"旋转尺寸"这个变量 |
 | 华为 | RL 场景下**rollout 激活量化**才是主因；只提升训练侧精度反而更差 |
 | 蚂蚁 | **E2M1 格式本身**带来收缩偏差，而这是 NVIDIA 与 AMD 共同的硬件押注 |
 | 腾讯 | FP8 attention 里 Attention Sink 导致 P 矩阵 cast 崩塌 |
@@ -185,7 +185,7 @@ NCCL/RCCL 的两个假设在超节点上同时失效：**buffer-centric 的内�
 | 方案 | 谁 | 改什么 |
 |------|----|--------|
 | StrataCL | 华为 | registration-on-allocation，用户 buffer 直通，零冗余拷贝 |
-| UBEP | 华为 + 南大 | 针对 CloudMatrix384 重构 EP 通信，破执行串行化 |
+| UBEP | 南大 + 华为 | 针对 CloudMatrix384 重构 EP 通信，破执行串行化（只在推理侧评测） |
 | NCCL EP | NVIDIA | 官方收编设备发起 RDMA 的 EP 语义 |
 | HCCL | Meta | 硬件卸载 + 编译式通信模型 |
 | PCCL | Intel | 进程组感知的算法综合 |
@@ -205,7 +205,7 @@ DynaTrain（VPS 抽象，235B MoE **4.36s**）与 ETC（P2P 直传，**2.33–6.
 ### ROCmoe / MonolithEP
 
 1. **[高优先级] 读 Meta HCCL。** 它把"collective 占用计算单元"这个我们在 megakernel 里绕不开的矛盾，用专用 message engine 卸载解决了。我们没有这个硬件，但**编译式通信模型**的组织方式可以借鉴——尤其是它如何在编译期确定通信调度。
-2. **[高优先级] 读华为 UBEP。** 超节点上"统一地址空间 + 高带宽 ≠ 稀疏 MoE 高性能"，它列的三个瓶颈（首要是**执行严格串行化**）几乎肯定在 MI300/MI400 的 XGMI 域内同样成立。
+2. **[高优先级] 读 UBEP（南大 + 华为）。** 超节点上"统一地址空间 + 高带宽 ≠ 稀疏 MoE 高性能"，它列的三个瓶颈（首要是**执行严格串行化**）几乎肯定在 MI300/MI400 的 XGMI 域内同样成立。**但要记住它的证据只来自推理解码侧**（TPOT），"训练侧同样成立"是我们的外推而非它的结论——反向的 dgrad/wgrad 依赖链更长，串行化只会更重，这个方向值得我们自己补一组训练侧测量。
 3. **RCCL 的缺口比想象的大。** 不只是 EP API：NCCL 2.28 里对 MoE 训练最值钱的是 **Copy Engine collectives**（用 copy engine 驱动传输，把 SM 从 alltoall/allgather 里释放出来）和 **device API**（kernel 内发起通信）。ROCm 7.2 公开的 RCCL 进展只到"4-NIC 拓扑感知 + backport NCCL 2.28 算法"。AMD 已有 rocSHMEM 和 mori SDMA allgather 作基础，缺的是**框架可直接消费的 API 面**。
 4. **sync-free 和整迭代 graph capture 应该合流。** AMD 两件事都做了但没合并：`--turbo_sync_free_moe_stage` 消除了 D2H 同步，MLPerf 里的 Flux 用 HIP graph 整迭代捕获拿到 +5.3%。NVIDIA 的经验说明**二者相乘才是大头**——消除同步的真正价值不在省那点开销，而在于它让整迭代 graph capture 成为可能（GPT-OSS +93%）。
 5. **参数与通信的原生低精度化是最明确的差距。** Primus v26.5 已在 Flux 路径做了 FSDP2 的 fp8 all-gather，说明基础设施存在；把它推广到 MoE/dense 主线并推进到 FP4，对标 NVIDIA 的 `--fp4-param-gather`。
@@ -315,14 +315,14 @@ python3 /tmp/org_resolve.py
 
 **互相印证（可信度显著提高）：**
 
-1. **AMD MXFP4 的 Wgrad 结论**：arXiv [2605.09825](https://arxiv.org/abs/2605.09825)（Penn State + AMD，MI355X 受控实验）与 MLPerf v6.0 官方博客（生产提交）**独立给出同一结论**——Wgrad 量化是发散主因，确定性 Hadamard 旋转有效而随机化无效。学术与生产两侧对上，这条可以当结论用。
+1. **AMD MXFP4 的 Wgrad 结论**：arXiv [2605.09825](https://arxiv.org/abs/2605.09825)（Penn State + AMD，MI355X 受控实验）与 MLPerf v6.0 官方博客（生产提交）给出同一结论——Wgrad 量化是发散主因，确定性 Hadamard 旋转有效而随机化无效。**但这两者不是独立信源**：论文 7 位作者里 5 位是 @amd.com，正文明确"follow MLPerf 的 C4 预训练设置"、用同一个 ppl 3.3 目标，本质是同一支队伍、同一条流水线报了两次；论文自己还声明配方**不保证跨模型/跨任务迁移**。所以这条的实际强度是"同一组织的两次一致报告 + 作者自陈不通用"——**当强先验用可以，当定论用不行**，要坐实需要一次非 AMD 的独立复现。
 2. **OpenAI MRC**：arXiv [2605.04333](https://arxiv.org/abs/2605.04333) 与 OpenAI 官方博客 + OCP 贡献互证，且补上了"已在全部最大 GB200 集群运行"这个部署事实。
 3. **Meta MTIA**：arXiv 的 HCCL（SC'26，与 MTIA 300 协同设计）与 Meta 官方博客（MTIA 300 已量产用于排序推荐训练）拼成完整图景。
 4. **华为 HyperParallel-MoE**：arXiv 论文与 MindSpore 仓库实现对得上，且仓库补出了 O0/O1 调度下沉档位。
 
 **⚠️ 一处实质冲突，值得深挖：**
 
-**FP4 训练中随机性的作用，AMD 与 NVIDIA 结论相反。** NVIDIA Transformer Engine 的 `NVFP4BlockScaling` **默认开启 stochastic rounding + Random Hadamard Transform**；AMD 在 MLPerf v6.0 博客与 arXiv 论文中**两次明确指出 stochastic rounding 和 randomized Hadamard 都稳不住 Wgrad，必须用确定性旋转**。两边都是生产级证据。可能的解释是格式差异（NVFP4 的 E4M3 block scale vs MXFP4 的 E8M0）或 block size 差异（16 vs 32），但没有公开材料给出定论——**这是一个真实的开放问题，也是我们做 AMD FP4 训练时绕不开的第一个决策点。**
+**FP4 训练中随机性的作用，AMD 与 NVIDIA 结论相反。** NVIDIA Transformer Engine 的 `NVFP4BlockScaling` **默认开启 stochastic rounding + Random Hadamard Transform**；AMD 在 MLPerf v6.0 博客与 arXiv 论文中**两次指出 stochastic rounding 和 randomized Hadamard 都稳不住 Wgrad，必须用确定性旋转**（但这两次同属一支队伍、同一套 MLPerf 流水线，不能算两个独立信源）。论文把机理归到**结构化的 micro-scaling 误差沿敏感梯度路径被放大**，而不是随机性不够。可能的解释仍是格式差异（NVFP4 的 E4M3 block scale vs MXFP4 的 E8M0）或量化 block size 差异（16 vs 32）；但要注意**"旋转尺寸"这个变量已被论文自己排除**——确定性 H16 与 H32 都能救回全流水，随机 H16 不行，所以分歧只能落在量化格式本身。没有跨厂独立复现给出定论——**这是一个真实的开放问题，也是我们做 AMD FP4 训练时绕不开的第一个决策点。**
 
 **arXiv 完全漏掉的重要工作：** 阿里 **Tessera**（OSDI '26，未上 arXiv）、DeepSeek-V4 的基础设施章节、Kimi K3 的 MoonEP、美团 LongCat-2.0 的 5 万卡国产 ASIC 训练。**教训：顶会论文与厂商技术报告不一定进 arXiv，只扫 arXiv 会系统性漏掉中国大厂的生产级工作。**
 
