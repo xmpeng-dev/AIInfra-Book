@@ -1,0 +1,2 @@
+Platform,GPU,Case,EP,T,H,I,E,K,Check,Forward Time (ms),Forward TFLOPS,Backward Time (ms),Backward TFLOPS
+ROCm,MI355X,DeepSeek-V3,8,8192,7168,2048,256,8,PASS,4.313,951.4,6.105,1008.4

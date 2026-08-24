@@ -12,15 +12,18 @@
 
 | 项目 | 主题 | 状态 |
 |---|---|---|
-| [`career-strategy/`](./career-strategy/README.md) | Agent 时代职业路线: Pilot 主线 + MMOE 硬核副线 | active — 长期职业资产规划 |
+| [`career-strategy/`](./career-strategy/README.md) | 长期技术定位：边界消解 → 删掉量化↔GEMM 的跨 op 格式契约 | active — 2026-08-12 定落地形态（Pilot 主线已降级、判定层已作废） |
 | [`gpt-oss/`](./gpt-oss/README.md) | GPT-OSS-20B MLPerf 调优 (MI355X) | active — best 9963 s |
 | [`monolith-moe/`](./monolith-moe/README.md) | MoE super-kernel + CCO (MI355X) | 阶段性收尾 — HIP C++ IPC kernel 待落地 |
 | [`monolith-ep/`](./monolith-ep/) | MoE expert parallel super-kernel | placeholder — 待启动 |
 | [`rocmoe/`](./rocmoe/README.md) | MoE super-kernel v3：Layout-P + receiver-pull + MonolithEP hot loop (MI355X) | active — 设计冻结 (M0 待启动) |
 | [`megaattn/`](./megaattn/README.md) | DSA attention megakernel：indexer + top-k + sparse MLA 三段融合 (MI355X) | active — v1 设计成文，M0 摸底待启动 |
-| [`hk-attn-bwd/`](./hk-attn-bwd/README.md) | HipKittens attention backward 切入 Primus-Turbo (GQA, MI355X) | **on-hold** — 三轮证据后判定边际价值低（AITER 已达 902–1047；HK 跑不了 MLA；turbo≈TE），仅剩两项收口动作 |
+| [`hk-attn-bwd/`](./hk-attn-bwd/README.md) | kernel-substrate：自主可控 GEMM 底座（原 attention backward 专项，2026-08-13 重写） | active — M0=GEMM epilogue 融 quant；attention 入口已关闭，见代码核查 |
+| [`peer-tiles/`](./peer-tiles/README.md) | 自有 repo：AMD 上融合 MoE 训练 kernel 的 tile 原语库（HK 形状，加第四条原语「所有权与可见性」） | **M0 设计中** — 立项文档已成文，三个待决问题未定 |
+| [`MegaMoeFlydsl/`](./MegaMoeFlydsl/mxfp8_moe_bwd_perf_summary.md) | MXFP8 Mega MoE fwd+bwd (FlyDSL, 8× MI355X) | active — e2e fwd+bwd 14.117 ms / FP8 净 1.41×；靶点是量化↔GEMM 格式缝 |
 | [`mlperf-llama/`](./mlperf-llama/README.md) | Llama-2-70B LoRA SFT, NeMo vs Primus | active — DataLoader fix + `fp8_param` A/B 待跑 |
 | [`pilot/`](./pilot/README.md) | Primus Pilot v2: agentic training-tuning system | active — bootstrap 工具落地,BASELINE 入口待排查 |
+| [`moe-train/`](./moe-train/README.md) | Compact MoE training runtime：PithTrain DNA + AMD topology-aware 重写 | **设计** — v1 架构 2026-08-19 成文，repo 未创建 |
 
 ## 写 note 的两条 skill
 

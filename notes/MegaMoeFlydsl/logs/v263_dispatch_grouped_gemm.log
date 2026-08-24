@@ -1,0 +1,104 @@
+############ MODE=dispatch_grouped_gemm START 2026-07-16T04:33:49Z ############
+[rank0]:[W716 04:33:54.546331877 ProcessGroupNCCL.cpp:5138] Guessing device ID based on global rank. This can cause a hang if rank to GPU mapping is heterogeneous. You can specify device_id in init_process_group()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_m' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_n' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_m' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_n' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_m' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_m' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_n' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_n' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_m' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_n' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_m' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_n' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_m' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_n' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/perf_apps/xiaoming/MegaMoE/benchmark/ops/training/bench_mega_moe.py:435: UserWarning: @jit parameter 'c_m' is annotated as 'int', but the argument resolves to 'Int32'. The annotation is not enforced; the actual value type is used.
+  launch(
+/perf_apps/xiaoming/MegaMoE/benchmark/ops/training/bench_mega_moe.py:435: UserWarning: @jit parameter 'c_n' is annotated as 'int', but the argument resolves to 'Int32'. The annotation is not enforced; the actual value type is used.
+  launch(
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_m' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_n' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_m' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_n' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_m' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_n' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_m' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_m' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_m' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_n' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_n' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_n' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_m' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_n' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_m' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_n' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_m' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/opt/venv/lib/python3.12/site-packages/flydsl/compiler/jit_function.py:1368: UserWarning: @jit parameter 'c_n' is annotated as 'int', which is not a DSL value type.
+  self._ensure_sig()
+/perf_apps/xiaoming/MegaMoE/benchmark/ops/training/bench_mega_moe.py:435: UserWarning: @jit parameter 'c_m' is annotated as 'int', but the argument resolves to 'Int32'. The annotation is not enforced; the actual value type is used.
+  launch(
+/perf_apps/xiaoming/MegaMoE/benchmark/ops/training/bench_mega_moe.py:435: UserWarning: @jit parameter 'c_n' is annotated as 'int', but the argument resolves to 'Int32'. The annotation is not enforced; the actual value type is used.
+  launch(
+  [check] fwd fused (nt)              : cos=1.00000 rel=0.0021 (worst rank=1) PASS
+  [check] bwd dgrad fused (nn)        : cos=1.00000 rel=0.0000 (worst rank=0) PASS
+  [check] wgrad dW1 fused (tn)        : cos=1.00000 rel=0.0000 (worst rank=2) PASS
+
+========================================================================
+[dispatch] DeepSeek-V3 MI355X EP8 T=8192 H=7168 I=2048 E=256 K=8 (max over ranks)
+========================================================================
+  dense_gemm   :    3.248 ms |  1263.4 TFLOPS (single-weight roofline, GROUP_M=4)
+  gemm_only    :    3.247 ms |  1264.0 TFLOPS | grouped/dense = 100.0%
+  dispatch_only:    2.238 ms |   367.6 GB/s (XGMI, nodeup)
+  fused        :    3.600 ms |  1140.0 TFLOPS | roofline (max(gemm,disp)/fused) = 90.2% | speedup vs serial = 1.52x
+  --------------------------------------------------------------------  backward dgrad (NN, = dispatch_grouped_0)
+  dense_gemm   :    1.627 ms |  1261.0 TFLOPS (single-weight roofline, GROUP_M=4)
+  gemm_only    :    1.643 ms |  1249.1 TFLOPS | grouped/dense = 99.1%
+  dispatch_only:    2.195 ms |   374.8 GB/s (XGMI, nodeup)
+  fused        :    2.384 ms |   860.7 TFLOPS | roofline (max(gemm,disp)/fused) = 92.1% | speedup vs serial = 1.61x
+  --------------------------------------------------------------------  backward wgrad dW1 (TN, = dispatch + variable-K wgrad)
+  dense_gemm   :    3.288 ms |  1248.3 TFLOPS (single-weight roofline, GROUP_M=4)
+  gemm_only    :    3.287 ms |  1248.7 TFLOPS | grouped/dense = 100.0%
+  dispatch_only:    2.160 ms |   380.9 GB/s (XGMI, nodeup)
+  fused        :    3.709 ms |  1106.5 TFLOPS | roofline (max(gemm,disp)/fused) = 88.6% | speedup vs serial = 1.47x
+
+Final Results:
++------------+--------+-------------+------+------+------+------+-----+-----+-------------------+-----------------------+------------------+----------------------+-----------------+----------------------+-----------------------------+--------------+------------------+---------------------------+--------------------+-----------------------+-----------------------------------+---------------------------+----------------------+--------------------------+---------------------+--------------------------+---------------------------------+------------------+----------------------+-------------------------------+---------------------------+---------------------------------------+-----------------------------+------------------------+----------------------------+-----------------------+----------------------------+--------------------+------------------------+---------------------------------+-----------------------------+-----------------------------------------+
+| Platform   | GPU    | Case        |   EP |    T |    H |    I |   E |   K |   dense_gemm (ms) |   dense_gemm (TFLOPS) |   gemm_only (ms) |   gemm_only (TFLOPS) | grouped/dense   |   dispatch_only (ms) |   dispatch_only (XGMI GB/s) |   fused (ms) |   fused (TFLOPS) | fused accuracy (cos/ok)   |   comm_hidden (ms) | speedup (vs serial)   | roofline (max(gemm,disp)/fused)   |   bwd dense_gemm (TFLOPS) |   bwd gemm_only (ms) |   bwd gemm_only (TFLOPS) | bwd grouped/dense   |   bwd dispatch_only (ms) |   bwd dispatch_only (XGMI GB/s) |   bwd fused (ms) |   bwd fused (TFLOPS) | bwd fused accuracy (cos/ok)   | bwd speedup (vs serial)   | bwd roofline (max(gemm,disp)/fused)   |   wgrad dense_gemm (TFLOPS) |   wgrad gemm_only (ms) |   wgrad gemm_only (TFLOPS) | wgrad grouped/dense   |   wgrad dispatch_only (ms) |   wgrad fused (ms) |   wgrad fused (TFLOPS) | wgrad fused accuracy (cos/ok)   | wgrad speedup (vs serial)   | wgrad roofline (max(gemm,disp)/fused)   |
++============+========+=============+======+======+======+======+=====+=====+===================+=======================+==================+======================+=================+======================+=============================+==============+==================+===========================+====================+=======================+===================================+===========================+======================+==========================+=====================+==========================+=================================+==================+======================+===============================+===========================+=======================================+=============================+========================+============================+=======================+============================+====================+========================+=================================+=============================+=========================================+
+| ROCm       | MI355X | DeepSeek-V3 |    8 | 8192 | 7168 | 2048 | 256 |   8 |             3.248 |                1263.4 |            3.247 |                 1264 | 100.0%          |                2.238 |                       367.6 |          3.6 |             1140 | 1.00000/PASS              |              1.885 | 1.52x                 | 90.2%                             |                      1261 |                1.643 |                   1249.1 | 99.1%               |                    2.195 |                           374.8 |            2.384 |                860.7 | 1.00000/PASS                  | 1.61x                     | 92.1%                                 |                      1248.3 |                  3.287 |                     1248.7 | 100.0%                |                       2.16 |              3.709 |                 1106.5 | 1.00000/PASS                    | 1.47x                       | 88.6%                                   |
++------------+--------+-------------+------+------+------+------+-----+-----+-------------------+-----------------------+------------------+----------------------+-----------------+----------------------+-----------------------------+--------------+------------------+---------------------------+--------------------+-----------------------+-----------------------------------+---------------------------+----------------------+--------------------------+---------------------+--------------------------+---------------------------------+------------------+----------------------+-------------------------------+---------------------------+---------------------------------------+-----------------------------+------------------------+----------------------------+-----------------------+----------------------------+--------------------+------------------------+---------------------------------+-----------------------------+-----------------------------------------+
+Results saved to /perf_apps/xiaoming/MegaMoE/slab/notes/MegaMoeFlydsl/logs/dispatch_grouped_gemm_20260716_v263_MI355X.csv
+############ MODE=dispatch_grouped_gemm EXIT=0 2026-07-16T04:40:14Z ############

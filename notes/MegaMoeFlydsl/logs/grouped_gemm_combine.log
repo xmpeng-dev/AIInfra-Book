@@ -1,0 +1,101 @@
+[rank0]:[W716 03:21:21.580382278 ProcessGroupNCCL.cpp:5138] Guessing device ID based on global rank. This can cause a hang if rank to GPU mapping is heterogeneous. You can specify device_id in init_process_group()
+  [check] fwd fused (nt)              : cos=1.00000 rel=0.0000 (worst rank=5) PASS
+  [check] bwd dgrad fused (nn)        : cos=1.00000 rel=0.0000 (worst rank=6) PASS
+
+========================================================================
+[combine] DeepSeek-V3 MI355X EP8 T=8192 H=7168 I=2048 E=256 K=8 (max over ranks)
+========================================================================
+  dense_gemm   :    4.768 ms |   430.3 TFLOPS (single-weight roofline, GROUP_M=4)
+  gemm_only    :    4.884 ms |   420.1 TFLOPS | grouped/dense = 97.6%
+  combine_only :    2.317 ms |   355.1 GB/s (XGMI)
+  fused        :    6.162 ms |   333.0 TFLOPS | roofline (max(gemm,comb)/fused) = 79.3% | speedup vs serial = 1.17x
+  --------------------------------------------------------------------  backward dgrad (NN, = mega_moe_fused STEP 3)
+  dense_gemm   :    8.834 ms |   464.5 TFLOPS (single-weight roofline, GROUP_M=4)
+  gemm_only    :    9.163 ms |   447.9 TFLOPS | grouped/dense = 96.4%
+  combine_only :    2.312 ms |   355.8 GB/s (XGMI)
+  fused        :   11.023 ms |   372.3 TFLOPS | roofline (max(gemm,comb)/fused) = 83.1% | speedup vs serial = 1.04x
+
+Final Results:
++------------+--------+-------------+------+------+------+------+-----+-----+-------------------+-----------------------+------------------+----------------------+-----------------+---------------------+----------------------------+--------------+------------------+---------------------------+--------------------+-----------------------+-----------------------------------+---------------------------+----------------------+--------------------------+---------------------+-------------------------+--------------------------------+------------------+----------------------+-------------------------------+---------------------------+---------------------------------------+
+| Platform   | GPU    | Case        |   EP |    T |    H |    I |   E |   K |   dense_gemm (ms) |   dense_gemm (TFLOPS) |   gemm_only (ms) |   gemm_only (TFLOPS) | grouped/dense   |   combine_only (ms) |   combine_only (XGMI GB/s) |   fused (ms) |   fused (TFLOPS) | fused accuracy (cos/ok)   |   comm_hidden (ms) | speedup (vs serial)   | roofline (max(gemm,comb)/fused)   |   bwd dense_gemm (TFLOPS) |   bwd gemm_only (ms) |   bwd gemm_only (TFLOPS) | bwd grouped/dense   |   bwd combine_only (ms) |   bwd combine_only (XGMI GB/s) |   bwd fused (ms) |   bwd fused (TFLOPS) | bwd fused accuracy (cos/ok)   | bwd speedup (vs serial)   | bwd roofline (max(gemm,comb)/fused)   |
++============+========+=============+======+======+======+======+=====+=====+===================+=======================+==================+======================+=================+=====================+============================+==============+==================+===========================+====================+=======================+===================================+===========================+======================+==========================+=====================+=========================+================================+==================+======================+===============================+===========================+=======================================+
+| ROCm       | MI355X | DeepSeek-V3 |    8 | 8192 | 7168 | 2048 | 256 |   8 |             4.768 |                 430.3 |            4.884 |                420.1 | 97.6%           |               2.317 |                      355.1 |        6.162 |              333 | 1.00000/PASS              |              1.039 | 1.17x                 | 79.3%                             |                     464.5 |                9.163 |                    447.9 | 96.4%               |                   2.312 |                          355.8 |           11.023 |                372.3 | 1.00000/PASS                  | 1.04x                     | 83.1%                                 |
++------------+--------+-------------+------+------+------+------+-----+-----+-------------------+-----------------------+------------------+----------------------+-----------------+---------------------+----------------------------+--------------+------------------+---------------------------+--------------------+-----------------------+-----------------------------------+---------------------------+----------------------+--------------------------+---------------------+-------------------------+--------------------------------+------------------+----------------------+-------------------------------+---------------------------+---------------------------------------+
+Results saved to grouped_gemm_combine_20260716_MI355X.csv
+[rank1]:[W716 03:22:37.449060895 TCPStore.cpp:125] [c10d] recvValue failed on SocketImpl(fd=8, addr=[localhost]:42120, remote=[localhost]:8483): Failed to recv, got 0 bytes. Connection was likely closed. Did the remote server shutdown or crash?
+Exception raised from recvBytes at /workspace/pytorch/torch/csrc/distributed/c10d/Utils.hpp:682 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0xb1 (0x7ffeef0e82d1 in /opt/venv/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: <unknown function> + 0x7181192 (0x7fff3e684192 in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+frame #2: c10d::TCPStore::check(std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > const&) + 0x28b (0x7fff3e6821cb in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+frame #3: c10d::ProcessGroupNCCL::HeartbeatMonitor::runLoop() + 0x45c (0x7fff320172ec in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_hip.so)
+frame #4: <unknown function> + 0xecdb4 (0x7ffff4f4bdb4 in /lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x9caa4 (0x7ffff7d02aa4 in /lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x129c6c (0x7ffff7d8fc6c in /lib/x86_64-linux-gnu/libc.so.6)
+
+[rank1]:[W716 03:22:37.451267844 ProcessGroupNCCL.cpp:1802] [PG ID 0 PG GUID 0 Rank 1] Failed to check the "should dump" flag on TCPStore, (maybe TCPStore server has shut down too early), with error: Failed to recv, got 0 bytes. Connection was likely closed. Did the remote server shutdown or crash?
+[rank4]:[W716 03:22:37.459782213 TCPStore.cpp:125] [c10d] recvValue failed on SocketImpl(fd=8, addr=[localhost]:42122, remote=[localhost]:8483): Failed to recv, got 0 bytes. Connection was likely closed. Did the remote server shutdown or crash?
+Exception raised from recvBytes at /workspace/pytorch/torch/csrc/distributed/c10d/Utils.hpp:682 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0xb1 (0x7ffeef0e82d1 in /opt/venv/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: <unknown function> + 0x7181192 (0x7fff3e684192 in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+frame #2: c10d::TCPStore::check(std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > const&) + 0x28b (0x7fff3e6821cb in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+frame #3: c10d::ProcessGroupNCCL::HeartbeatMonitor::runLoop() + 0x45c (0x7fff320172ec in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_hip.so)
+frame #4: <unknown function> + 0xecdb4 (0x7ffff4f4bdb4 in /lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x9caa4 (0x7ffff7d02aa4 in /lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x129c6c (0x7ffff7d8fc6c in /lib/x86_64-linux-gnu/libc.so.6)
+
+[rank4]:[W716 03:22:37.461951653 ProcessGroupNCCL.cpp:1802] [PG ID 0 PG GUID 0 Rank 4] Failed to check the "should dump" flag on TCPStore, (maybe TCPStore server has shut down too early), with error: Failed to recv, got 0 bytes. Connection was likely closed. Did the remote server shutdown or crash?
+[rank3]:[W716 03:22:37.495775574 TCPStore.cpp:125] [c10d] recvValue failed on SocketImpl(fd=8, addr=[localhost]:42132, remote=[localhost]:8483): Failed to recv, got 0 bytes. Connection was likely closed. Did the remote server shutdown or crash?
+Exception raised from recvBytes at /workspace/pytorch/torch/csrc/distributed/c10d/Utils.hpp:682 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0xb1 (0x7ffeef0e82d1 in /opt/venv/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: <unknown function> + 0x7181192 (0x7fff3e684192 in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+frame #2: c10d::TCPStore::check(std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > const&) + 0x28b (0x7fff3e6821cb in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+frame #3: c10d::ProcessGroupNCCL::HeartbeatMonitor::runLoop() + 0x45c (0x7fff320172ec in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_hip.so)
+frame #4: <unknown function> + 0xecdb4 (0x7ffff4f4bdb4 in /lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x9caa4 (0x7ffff7d02aa4 in /lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x129c6c (0x7ffff7d8fc6c in /lib/x86_64-linux-gnu/libc.so.6)
+
+[rank3]:[W716 03:22:37.497358312 ProcessGroupNCCL.cpp:1802] [PG ID 0 PG GUID 0 Rank 3] Failed to check the "should dump" flag on TCPStore, (maybe TCPStore server has shut down too early), with error: Failed to recv, got 0 bytes. Connection was likely closed. Did the remote server shutdown or crash?
+[rank5]:[W716 03:22:37.550706857 TCPStore.cpp:125] [c10d] recvValue failed on SocketImpl(fd=8, addr=[localhost]:42136, remote=[localhost]:8483): Failed to recv, got 0 bytes. Connection was likely closed. Did the remote server shutdown or crash?
+Exception raised from recvBytes at /workspace/pytorch/torch/csrc/distributed/c10d/Utils.hpp:682 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0xb1 (0x7ffeef0e82d1 in /opt/venv/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: <unknown function> + 0x7181192 (0x7fff3e684192 in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+frame #2: c10d::TCPStore::check(std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > const&) + 0x28b (0x7fff3e6821cb in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+frame #3: c10d::ProcessGroupNCCL::HeartbeatMonitor::runLoop() + 0x45c (0x7fff320172ec in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_hip.so)
+frame #4: <unknown function> + 0xecdb4 (0x7ffff4f4bdb4 in /lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x9caa4 (0x7ffff7d02aa4 in /lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x129c6c (0x7ffff7d8fc6c in /lib/x86_64-linux-gnu/libc.so.6)
+
+[rank5]:[W716 03:22:37.551839191 ProcessGroupNCCL.cpp:1802] [PG ID 0 PG GUID 0 Rank 5] Failed to check the "should dump" flag on TCPStore, (maybe TCPStore server has shut down too early), with error: Failed to recv, got 0 bytes. Connection was likely closed. Did the remote server shutdown or crash?
+[rank2]:[W716 03:22:37.568411357 TCPStore.cpp:125] [c10d] recvValue failed on SocketImpl(fd=8, addr=[localhost]:42152, remote=[localhost]:8483): Failed to recv, got 0 bytes. Connection was likely closed. Did the remote server shutdown or crash?
+Exception raised from recvBytes at /workspace/pytorch/torch/csrc/distributed/c10d/Utils.hpp:682 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0xb1 (0x7ffeef0e82d1 in /opt/venv/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: <unknown function> + 0x7181192 (0x7fff3e684192 in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+frame #2: c10d::TCPStore::check(std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > const&) + 0x28b (0x7fff3e6821cb in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+frame #3: c10d::ProcessGroupNCCL::HeartbeatMonitor::runLoop() + 0x45c (0x7fff320172ec in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_hip.so)
+frame #4: <unknown function> + 0xecdb4 (0x7ffff4f4bdb4 in /lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x9caa4 (0x7ffff7d02aa4 in /lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x129c6c (0x7ffff7d8fc6c in /lib/x86_64-linux-gnu/libc.so.6)
+
+[rank2]:[W716 03:22:37.570630885 ProcessGroupNCCL.cpp:1802] [PG ID 0 PG GUID 0 Rank 2] Failed to check the "should dump" flag on TCPStore, (maybe TCPStore server has shut down too early), with error: Failed to recv, got 0 bytes. Connection was likely closed. Did the remote server shutdown or crash?
+[rank6]:[W716 03:22:37.578653102 TCPStore.cpp:125] [c10d] recvValue failed on SocketImpl(fd=8, addr=[localhost]:42162, remote=[localhost]:8483): Failed to recv, got 0 bytes. Connection was likely closed. Did the remote server shutdown or crash?
+Exception raised from recvBytes at /workspace/pytorch/torch/csrc/distributed/c10d/Utils.hpp:682 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0xb1 (0x7ffeef0e82d1 in /opt/venv/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: <unknown function> + 0x7181192 (0x7fff3e684192 in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+frame #2: c10d::TCPStore::check(std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > const&) + 0x28b (0x7fff3e6821cb in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+frame #3: c10d::ProcessGroupNCCL::HeartbeatMonitor::runLoop() + 0x45c (0x7fff320172ec in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_hip.so)
+frame #4: <unknown function> + 0xecdb4 (0x7ffff4f4bdb4 in /lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x9caa4 (0x7ffff7d02aa4 in /lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x129c6c (0x7ffff7d8fc6c in /lib/x86_64-linux-gnu/libc.so.6)
+
+[rank6]:[W716 03:22:37.580869430 ProcessGroupNCCL.cpp:1802] [PG ID 0 PG GUID 0 Rank 6] Failed to check the "should dump" flag on TCPStore, (maybe TCPStore server has shut down too early), with error: Failed to recv, got 0 bytes. Connection was likely closed. Did the remote server shutdown or crash?
+[rank7]:[W716 03:22:37.580200540 TCPStore.cpp:125] [c10d] recvValue failed on SocketImpl(fd=8, addr=[localhost]:42172, remote=[localhost]:8483): Failed to recv, got 0 bytes. Connection was likely closed. Did the remote server shutdown or crash?
+Exception raised from recvBytes at /workspace/pytorch/torch/csrc/distributed/c10d/Utils.hpp:682 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0xb1 (0x7ffeef0e82d1 in /opt/venv/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: <unknown function> + 0x7181192 (0x7fff3e684192 in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+frame #2: c10d::TCPStore::check(std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > const&) + 0x28b (0x7fff3e6821cb in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so)
+frame #3: c10d::ProcessGroupNCCL::HeartbeatMonitor::runLoop() + 0x45c (0x7fff320172ec in /opt/venv/lib/python3.12/site-packages/torch/lib/libtorch_hip.so)
+frame #4: <unknown function> + 0xecdb4 (0x7ffff4f4bdb4 in /lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x9caa4 (0x7ffff7d02aa4 in /lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x129c6c (0x7ffff7d8fc6c in /lib/x86_64-linux-gnu/libc.so.6)
+
+[rank7]:[W716 03:22:37.582400039 ProcessGroupNCCL.cpp:1802] [PG ID 0 PG GUID 0 Rank 7] Failed to check the "should dump" flag on TCPStore, (maybe TCPStore server has shut down too early), with error: Failed to recv, got 0 bytes. Connection was likely closed. Did the remote server shutdown or crash?

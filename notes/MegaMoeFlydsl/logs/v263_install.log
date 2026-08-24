@@ -1,0 +1,38 @@
+===== uninstall existing primus-turbo =====
+Found existing installation: primus_turbo 0.2.0+3cd482d
+Uninstalling primus_turbo-0.2.0+3cd482d:
+  Successfully uninstalled primus_turbo-0.2.0+3cd482d
+
+===== editable install (skip ext build, no deps, no build isolation) =====
+  Checking if build backend supports build_editable: started
+  Checking if build backend supports build_editable: finished with status 'done'
+  Preparing editable metadata (pyproject.toml): started
+  Preparing editable metadata (pyproject.toml): finished with status 'done'
+Building wheels for collected packages: primus-turbo
+  Building editable for primus-turbo (pyproject.toml): started
+  Building editable for primus-turbo (pyproject.toml): finished with status 'done'
+  Created wheel for primus-turbo: filename=primus_turbo-0.0.0-0.editable-py3-none-any.whl size=7524 sha256=86e898a41b7cf48900aedeec474d7852f25fc5e2ad2b073cd16b8a611a523351
+  Stored in directory: /tmp/pip-ephem-wheel-cache-tk6mh852/wheels/71/25/82/05e3e11843d6e294e93cc290b85144a6a4a64939145af7b1db
+Successfully built primus-turbo
+Installing collected packages: primus-turbo
+Successfully installed primus-turbo-0.0.0
+
+[notice] A new release of pip is available: 26.0.1 -> 26.1.2
+[notice] To update, run: pip install --upgrade pip
+
+===== pip show =====
+Name: primus-turbo
+Version: 0.0.0
+Summary: High-performance acceleration library for large-scale model training on AMD GPUs
+Location: /opt/venv/lib/python3.12/site-packages
+
+===== resolve imports + ABI check =====
+primus_turbo.__file__   -> /perf_apps/xiaoming/MegaMoE/primus_turbo/__init__.py
+primus_turbo.__version__ -> 0.3.2.dev41
+primus_turbo.pytorch._C                          -> /perf_apps/xiaoming/MegaMoE/primus_turbo/pytorch/_C.cpython-312-x86_64-linux-gnu.so
+primus_turbo.flydsl.mega                         -> /perf_apps/xiaoming/MegaMoE/primus_turbo/flydsl/mega/__init__.py
+primus_turbo.flydsl.mega.tune_utils              -> /perf_apps/xiaoming/MegaMoE/primus_turbo/flydsl/mega/tune_utils.py
+primus_turbo.pytorch.ops.moe.mega_moe_fused      -> /perf_apps/xiaoming/MegaMoE/primus_turbo/pytorch/ops/moe/mega_moe_fused.py
+flydsl 0.2.4 _run_config True
+torch 2.10.0+git94c6e04 devices 8
+import primus_turbo.pytorch OK (ABI ok)

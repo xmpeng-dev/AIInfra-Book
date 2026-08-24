@@ -18,6 +18,8 @@
 
 **判据由此改变：不是「性能是否占优」，而是「能否做到今天做不到的融合」。** 性能持平不构成叫停理由。
 
+2026-08-12 的 [Turbo attention 代码核查](./2026-08-12_1354_turbo_attention_ground_truth.md) 进一步确认：**以 attention backward 为切口的立项不成立**（FlyDSL 已有 sparse MLA backward、Turbo 无内核派发层、活跃前沿是 DSV4 DSA）。attention 从入口降级为消费者 #3/#4；**M0 首选仍是 GEMM epilogue 融 quant**，与 [`career-strategy`](../career-strategy/README.md) 的格式缝靶子一致。
+
 ## 2. 稀缺资产：HK 提供什么外面给不了的
 
 | 资产 | 为什么外面拿不到 | 出处 |
@@ -52,10 +54,10 @@
 
 | # | 消费者 | 被卡在哪 | 备注 |
 |---|---|---|---|
-| **1** | **GEMM epilogue 融 quant** | FP8 训练里每个 linear 最多 4 次不可缓存的激活/梯度 cast（x/grad_y 各 rowwise+colwise）。**收益最大的一类是 GEMM 算完直接吐 FP8**，而这需要可改的 GEMM | 权重侧已由「首 microbatch 量化 + 缓存」「专家权重合并 + grouped 量化」治过；剩下的都在激活侧。norm/SwiGLU 侧已有 `silu_and_mul_fq`、`qk_norm_rope_quant` 等先例，缺的是 GEMM 侧 |
+| **1** | **GEMM epilogue 融 quant** | FP8 训练里每个 linear 最多 4 次不可缓存的激活/梯度 cast（x/grad_y 各 rowwise+colwise）。**收益最大的一类是 GEMM 算完直接吐 FP8**，而这需要可改的 GEMM | 权重侧已由「首 microbatch 量化 + 缓存」「专家权重合并 + grouped 量化」治过；剩下的都在激活侧。norm/SwiGLU 侧已有 `silu_and_mul_fq`、`qk_norm_rope_quant` 等先例，缺的是 GEMM 侧。详见 [`MegaMoeFlydsl`](../MegaMoeFlydsl/mxfp8_moe_bwd_perf_summary.md) |
 | **2** | **MoE grouped GEMM 内环** | MegaMoE 的性能地基。我们在 MMOE/MonolithEP 上靠 DTOLDS + XOR swizzle + LDS pad 自己重走过这条路，成本很高 | HK 的布局知识可直接复用，避免再逆一遍 |
-| **3** | **attention backward（MLA 优先）** | 见 §6 修正：训练态 MLA 是 **qk 192 / v 128**，唯一障碍是应用层常量，**不需要 gather、不需要 576/512 swizzle** | 四个主流后端里三个断言两头维相等，**结构性空白** |
-| 4 | attention（GQA） | AITER 已达 902–1047 且不可改 | 价值在「摘掉外部依赖」，不在超过它 |
+| 3 | attention backward（MLA） | 训练态 qk 192 / v 128；HK 需拆 `ATTN_D` | **优先级已下调**：Turbo 已有 FlyDSL sparse MLA bwd（2759 行）；HK 仅存 register pinning 技法可迁移 |
+| 4 | attention（GQA） | AITER 已达 902–1047 且不可改 | 价值在框架层（派发器、CP ring zigzag），不在 HK 内核供给 |
 
 ## 5. 阶段计划
 
@@ -69,6 +71,8 @@
 
 **二维门槛（替代原「不占优则叫停」）**：①性能进入可用区间（到在位实现的合理比例、生产形状跑得动，**不要求打赢**）；②可控性收益可兑现（列出在 HK 上做得到、在供给方实现上做不到的动作，至少两条落地）。**两条都不成立才叫停。**
 
+**Primus 框架侧并行候选**（不依赖 HK，见 [代码核查](./2026-08-12_1354_turbo_attention_ground_truth.md)）：Turbo attention 后端派发器 · ring attention causal `2*cp_size` zigzag 负载均衡。
+
 ## 6. 已修正的判断（存档，避免重犯）
 
 | 原判断 | 实际情况 | 依据 |
@@ -78,6 +82,7 @@
 | 「MLA 要 576/512，且需要 gather 原语，成本极高」 | **576/512 是 absorbed 的 decode 形态（megaattn 的地盘）。训练态 MLA 是 `qk_head_dim 128 + qk_pos_emb 64 = 192` / `v_head_dim 128`。** 训练 attention 在序列上稠密，**不需要 gather**；192/128 也不构成新一档 swizzle。唯一障碍是应用层 `constexpr int ATTN_D = 128` | `Primus/primus/configs/models/megatron/deepseek_v3.yaml:18-20`；`hipKitten/training/llama/csrc/attn_fwd_causal.cpp:22` |
 | 「FlyDSL 是可控的一侧」 | **FlyDSL attention 与 AITER 同源**；「AMD 官方」不等于「我们可控」。原依据是 FP8 GEMM 先例（Primus commit `fa391f32`），**该先例不能外推到 attention** | 供给方约束，见 §7 |
 | 「MLA backward 是真空，值得抢」 | **不是真空**：`Turbo/primus_turbo/flydsl/attention/` 已有 sparse MLA 前向 1068 行 / 反向 2759 行（`D=512 / DQK=576`，含 topk 分块、KV 预取、QK4 门控），PR #420 | `Turbo` 仓实测 |
+| 「FlyDSL 无 backward / 抽象层级高于 HK」 | **不成立**：FlyDSL 直接写 `rocdl.mfma_*` / `s_setprio` / 手工 LDS；8-wave / 4-wave 调度已在 Turbo 仓 | [代码核查](./2026-08-12_1354_turbo_attention_ground_truth.md) |
 | 「quant 覆盖率表与本项目无关，可独立先做」 | **只对一半成立。** norm/SwiGLU 侧可独立做；**融进 GEMM epilogue 的那一类需要可改的 GEMM**，即本项目 | §4 消费者 1 |
 
 ## 7. 供给方约束（本项目的根本理由）
@@ -92,10 +97,11 @@ AITER 与 Turbo 内 FlyDSL attention **同源**，且该方向优先级在**推�
 
 | 模型 | H_Q | H_KV | GQA 比 | head_dim | seq | 状态 |
 |---|---|---|---|---|---|---|
-| DeepSeek-V3（**M2 目标**） | 128 | MLA | — | **qk 192 / v 128** | 4096 | 需拆 `D_QK`/`D_V` |
-| Llama3.1-8B | 32 | 8 | 4:1 | 128 | 2048 / max 131072 | 待验证 |
-| Llama3.1-70B | 64 | 8 | 8:1 | 128 | max 131072 | 待验证（**HK Makefile 默认值恰为此形状**，说明 GQA 路径本身支持） |
-| Qwen3-235B-A22B | 64 | 4 | 16:1 | 128 | 4096 | 待验证 |
+| DeepSeek-V3（M2 目标） | 128 | MLA | — | **qk 192 / v 128** | 4096 | 需拆 `D_QK`/`D_V` |
+| DeepSeek-V4 | — | sparse MLA (DSA) | — | d_qk 576 / d_v 512 | — | Turbo `v4_attention_kernels/` 11 后端；**活跃前沿** |
+| Llama3.1-8B | 32 | 8 | 4:1 | 128 | 2048 / max 131072 | Turbo 测试已覆盖 |
+| Llama3.1-70B | 64 | 8 | 8:1 | 128 | max 131072 | Turbo 测试已覆盖（**HK Makefile 默认值恰为此形状**） |
+| Qwen3-235B-A22B | 64 | 4 | 16:1 | 128 | 4096 | Turbo 测试覆盖 4:1 未覆盖 16:1 |
 
 HK `setup_kernels.sh` 当前只构建 `B=8 H=16 H_KV=16 N=2048`（MHA），与生产形状均不匹配——这是 M1 的输入。
 
@@ -120,6 +126,7 @@ HK `setup_kernels.sh` 当前只构建 `B=8 H=16 H_KV=16 N=2048`（MHA），与�
 | 文件 | 内容 |
 |---|---|
 | [2026-08-12_1006_hk_primus_attn_bwd_plan.md](./2026-08-12_1006_hk_primus_attn_bwd_plan.md) | 原 attention backward 专项计划：缺口分析、AITER 基线过时的三轮证据、形状缺口、风险与对冲。**其 §0.1(b) 的「内核层已吃满」结论见 §6 第一行修正** |
+| [2026-08-12_1354_turbo_attention_ground_truth.md](./2026-08-12_1354_turbo_attention_ground_truth.md) | Primus-Turbo / Primus / FlyDSL 三仓 attention 代码核查：FlyDSL backward 位置、抽象层级、Turbo 无派发层、DSV4 前沿、CP ring 缺口 |
 
 ## 相关
 
@@ -128,3 +135,4 @@ HK `setup_kernels.sh` 当前只构建 `B=8 H=16 H_KV=16 N=2048`（MHA），与�
 - [`megaattn/`](../megaattn/README.md) — DSA decode 三段融合（absorbed 576/512 + 稀疏 gather），与本项目**互补不重叠**；其「FlyDSL 稀疏路径为零」前提需按 §6 第五行修正
 - [`papers/ubep.md`](../../papers/ubep.md) — 「改写通信库」而非「写 megakernel」的对照路线；其 §6 对 fused persistent kernel 的两条批评值得正面回答
 - [`knowledge/systems/primus-pipeline-runtime-megatron-integration.md`](../../knowledge/systems/primus-pipeline-runtime-megatron-integration.md) — Primus 接入机制
+- [`career-strategy/`](../career-strategy/README.md) — 格式缝靶子与 S0–S4 分期
