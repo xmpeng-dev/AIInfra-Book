@@ -61,6 +61,7 @@ slab/
 ├── notes/                   # project work logs (one dir per project)
 ├── weekly/                  # weekly reports, foldered by year
 ├── artifacts/               # generated outputs (canvases/, html/)
+├── benchmarks/              # standalone benchmark harnesses (one dir per subject)
 └── scripts/                 # utility shell scripts
 ```
 

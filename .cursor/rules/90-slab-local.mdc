@@ -19,7 +19,8 @@ canvas / HTML export. Treat all changes as documentation edits.
 ## Top-level layout (slab only)
 
 ```
-AGENTS.md  README.md  .cursor/  knowledge/  papers/  notes/  weekly/  artifacts/  scripts/
+AGENTS.md  README.md  .cursor/  knowledge/  papers/  notes/  weekly/  artifacts/
+benchmarks/  scripts/
 ```
 
 Do not introduce new top-level directories without updating
