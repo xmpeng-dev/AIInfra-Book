@@ -192,6 +192,8 @@ FP8 MoE                         DeepSeek-V3 报告 / FP8-Flow-MoE
 非 GEMM 算子融合                 CODA
 MoE 内存                        MoEBlaze 📒 / MemFine 📒
 AMD 集群 MoE                    Piper 📒 / UltraEP 📒
+低精度梯度通信 / wgrad RS        AGoQ 📒 / DynamiQ 📒 / GIFT 📒（见 §11）
+Rack-scale 并行策略 / 72 卡域    UltraEP 📒 / Megatron-Core MoE 📒（见 MI455X 参考点）
 ```
 
 ---
@@ -202,6 +204,35 @@ AMD 集群 MoE                    Piper 📒 / UltraEP 📒
 - MoE 100+ 篇分类：[`../moe/paper-landscape.md`](../moe/paper-landscape.md)
 - MoE 训练 arXiv 早期整理：[`../moe/recent-arxiv.md`](../moe/recent-arxiv.md)
 - TorchTitan 跨版本 diff：[`torchtitan-diff-2025-10-vs-2026-04.md`](./torchtitan-diff-2025-10-vs-2026-04.md)
+- **MI455X / Helios 并行策略参考点**：[`mi455x-parallelism-strategy-reference.md`](./mi455x-parallelism-strategy-reference.md)
+
+---
+
+## 11. 低精度梯度通信（wgrad RS / all-reduce 压缩）
+
+> 本分类 2026-09-03 新增。触发点：Megatron-LM 主线的 **GTP（Generalized Tensor Parallelism）** 把权重 all-gather 优化到原生 MXFP8/NVFP4（每元素 BF16 6.0 B → MXFP8 4.06 B → NVFP4 3.13 B），但 **wgrad reduce-scatter 始终留在 BF16**，于是 gather 侧优化完之后 **RS 反而变成每权重通信预算的 64%（bf16 RS）到 78%（fp32 RS）**。这是上游自己算出来、但没有解决的缺口，也是 Primus 在 MI455X 上值得占的位置。
+
+**核心技术障碍**（⚠ 2026-09-03 修正过一次）：AGoQ 的诊断是"reduce-scatter 需要在通信中做加法、FP8 易溢出"，但**这个诊断不足以解释上游为什么留在 BF16，而且 A2A + 本地 FP32 归约这个结构上游已经出货了**——`megatron/core/distributed/reduce_scatter_with_fp32_accumulation.py` + `--gtp-remat-reduce-scatter-with-fp32-accumulation`（GTP 文档 §2.6，原话"eliminating that accumulation error **for the same bytes on the wire**"，即修精度不修带宽），DP 轴还有孪生 flag；更早 ZeRO++ 的 qgZ（[2306.10209](https://arxiv.org/abs/2306.10209), 2023）已发表同一结构且多了 2-hop 层级化。
+
+**真正的缺口是格式而不是结构**：通信库没有块缩放数据类型（NCCL 只有 `ncclFloat8e4m3/e5m2`，MXFP8/NVFP4 AllReduce 是 issue #2199 的未实现 RFE），加上 NVL72 上 NVLS 的 `multimem.ld_reduce .acc::f32` 已在交换机内代偿了精度。更根本的数值约束是**尾数宽度而非动态范围**：block scale 锁住指数，但加 W 个数需要约 `log₂W` 位额外尾数（W=72 → 6.2 位），而 FP8 E4M3 只有 3 位、FP4 只有 1 位——正确表述是"**累加器必须永远比线上格式宽**"。
+
+三条互补路线：
+
+| 论文 | arXiv | 机构 | 核心思路 | 关键数字 | 笔记 |
+|---|---|---|---|---|---|
+| **AGoQ** | [2605.00539](https://arxiv.org/abs/2605.00539) | — | **改 collective 结构**绕开低精度累加：AllReduce 拆成 All-to-All → 本地 dequant 到 FP32 → local reduce → 再量化 → All-Gather；另含近 4-bit 激活存储 | 显存降至多 **52%**，训练 **1.34×**（vs Megatron-LM/COAT/DeepSpeed）；8B–32B LLaMA，≤64 卡 | 📒 [`agoq.md`](../../papers/agoq.md) |
+| **DynamiQ** | [2602.08923](https://arxiv.org/abs/2602.08923) | — | **改量化方案 + 融合 kernel**：针对 multi-hop 聚合中"部分和被多次累加"做 partial-sum-aware 量化（按坐标量级分配位宽）+ decompress-accumulate-recompress 融合 kernel | 比 OmniReduce/THC/MXFP4/6/8 中最好者再快 **34.2%**；唯一稳定达 BF16 基线 **99.9%**；比 BF16 快 **40.8%**；模拟到 DP=8192 时 6 bit 优于 MXFP8 的 8.5 bit。**有代码** | 📒 [`dynamiq.md`](../../papers/dynamiq.md) |
+| **GIFT** | [2607.07494](https://arxiv.org/abs/2607.07494) | — | **改坐标系**：用 K-FAC 输入侧因子把梯度白化到近各向同性坐标再量化。保真度分析扎实：FP8 单步往返 RelL2 **−67.4%**，且对角近似几乎无效→有用的几何是**跨维耦合**的 | ⚠ **不要按 −7.6% 引用**：同一张表里**直接欧氏 FP8 是 −10.79%，GIFT 慢 3.19 个百分点**；质量优势也不成立（头对头 600M 欧氏赢 8 项 / GIFT 赢 6 项，14 任务均值欧氏 0.5186 > FP32 0.5060 > GIFT 0.5032）；基线是 FP32，换 BF16 后直接 FP8 只 +3.9%、GIFT 只 +0.4% | 📒 [`gift.md`](../../papers/gift.md) |
+
+**推荐地基不是这三篇里的任何一篇，而是 SDP4Bit**：collective 选对了、在 Megatron 内、开源、验到 6.7B/18B，且它的两级结构正是 Helios 需要的"域内 BF16 免费归约 + 只对跨机架分片做量化"。**待读**：SDP4Bit、Quartet II（FP4 梯度估计，MS-EDEN / Hadamard 变换）。
+
+**最便宜的对照组必须先做**：`确定性 Hadamard + FP8 wgrad RS`。kernel 在 ROCm TE 里已有，一次消掉 GIFT 的四个工程负担（低秩因子维护、跨 rank 一致性、坐标刷新、EF 重定基），而且直接呼应下面那条 MXFP4 的交叉校验。
+
+⚠ **交叉校验风险**：[`papers/mxfp4-pretraining.md`](../../papers/mxfp4-pretraining.md) 在 MI355X 原生 MXFP4 上实测**随机舍入与随机 Hadamard 不收敛、确定性 Hadamard 才恢复**。GIFT 与 SDP4Bit 都依赖旋转/变换类操作，这个发现是支持还是威胁其路线，需要单独判断。
+
+⚠ **规模警告**：三篇的验证规模都不足以支撑前沿预训练结论——AGoQ ≤64 卡 / 8–32B，DynamiQ 是微调级负载（BERT-large、LLaMA-1B、Gemma-1B）且大规模靠模拟，GIFT 只到 Llama-600M。
+
+**与 MI455X 的关系**：详见 [`mi455x-parallelism-strategy-reference.md`](./mi455x-parallelism-strategy-reference.md)。要点是 Helios 域内是**单跳非阻塞**，而 DynamiQ 的立论前提是 multi-hop——需要区分"域内单跳"与"跨机架 DP（multi-hop，且是 6:1 里窄的一侧）"分别适用哪条路线。
 
 ---
 
@@ -210,3 +241,4 @@ AMD 集群 MoE                    Piper 📒 / UltraEP 📒
 | 日期 | 变更 |
 |------|------|
 | 2026-07-31 | 初版：arXiv 2025–2026 训练/推理迁移全景，含机构索引与优先队列 |
+| 2026-09-03 | 新增 §11 低精度梯度通信分类（AGoQ / DynamiQ / GIFT），补 §9 速查条目与 §10 MI455X 参考点链接 |
